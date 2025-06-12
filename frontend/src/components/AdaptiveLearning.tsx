@@ -87,8 +87,11 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
 
   const loadDashboard = async () => {
     try {
+      console.log('Loading dashboard...');
       const response = await fetch('http://localhost:8000/api/v1/adaptive/dashboard/1');
+      console.log('Dashboard response:', response.status, response.ok);
       const data = await response.json();
+      console.log('Dashboard data:', data);
       
       // Ensure data has the expected structure
       if (data && data.learning_state && data.exploration && data.interests) {
@@ -125,6 +128,7 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
       }
     } catch (error) {
       console.error('Failed to load dashboard:', error);
+      console.error('Error details:', error.message);
       // Set default dashboard on error
       setDashboard({
         learning_state: {
@@ -156,10 +160,13 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
   };
 
   const startLearning = async () => {
+    console.log('Starting learning...');
     setIsLoading(true);
     try {
       const response = await fetch('http://localhost:8000/api/v1/adaptive/continue/1');
+      console.log('Continue learning response:', response.status, response.ok);
       const data = await response.json();
+      console.log('Continue learning data:', data);
       
       if (data.session && data.question) {
         setSessionId(data.session.session_id);
@@ -562,7 +569,10 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
             </div>
           </div>
           <button
-            onClick={startLearning}
+            onClick={() => {
+              console.log('Button clicked!');
+              startLearning();
+            }}
             disabled={isLoading}
             className="bg-white text-blue-600 px-8 py-4 rounded-lg font-semibold text-lg hover:bg-blue-50 transition-colors disabled:opacity-50 shadow-lg"
           >

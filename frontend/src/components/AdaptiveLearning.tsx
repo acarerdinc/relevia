@@ -87,11 +87,8 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
 
   const loadDashboard = async () => {
     try {
-      console.log('Loading dashboard...');
       const response = await fetch('http://localhost:8000/api/v1/adaptive/dashboard/1');
-      console.log('Dashboard response:', response.status, response.ok);
       const data = await response.json();
-      console.log('Dashboard data:', data);
       
       // Ensure data has the expected structure
       if (data && data.learning_state && data.exploration && data.interests) {
@@ -128,7 +125,6 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
       }
     } catch (error) {
       console.error('Failed to load dashboard:', error);
-      console.error('Error details:', error.message);
       // Set default dashboard on error
       setDashboard({
         learning_state: {
@@ -160,13 +156,10 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
   };
 
   const startLearning = async () => {
-    console.log('Starting learning...');
     setIsLoading(true);
     try {
       const response = await fetch('http://localhost:8000/api/v1/adaptive/continue/1');
-      console.log('Continue learning response:', response.status, response.ok);
       const data = await response.json();
-      console.log('Continue learning data:', data);
       
       if (data.session && data.question) {
         setSessionId(data.session.session_id);
@@ -175,10 +168,6 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
       } else if (data.session_id) {
         setSessionId(data.session_id);
         await getNextQuestion(data.session_id);
-      } else if (data.suggestion === 'explore_new_areas' || data.suggestion === 'explore_new_topics' || data.error === 'no_questions_available') {
-        // Fallback to traditional quiz with AI root topic
-        console.log('Falling back to traditional quiz');
-        await startTraditionalQuiz();
       }
     } catch (error) {
       console.error('Failed to start learning:', error);
@@ -187,74 +176,20 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
     }
   };
 
-  const startTraditionalQuiz = async () => {
-    try {
-      // Start quiz with AI root topic (ID 1)
-      const startResponse = await fetch('http://localhost:8000/api/v1/quiz/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic_id: 1, user_id: 1 })
-      });
-      const startData = await startResponse.json();
-      
-      if (startData.session_id) {
-        setSessionId(startData.session_id);
-        await getTraditionalQuestion(startData.session_id);
-      }
-    } catch (error) {
-      console.error('Failed to start traditional quiz:', error);
-    }
-  };
-
-  const getTraditionalQuestion = async (sessionId: number) => {
-    try {
-      const response = await fetch(`http://localhost:8000/api/v1/quiz/question/${sessionId}`);
-      const data = await response.json();
-      
-      if (!data.error) {
-        // Transform traditional question to adaptive format
-        setCurrentQuestion({
-          question_id: data.question_id,
-          quiz_question_id: data.quiz_question_id,
-          question: data.question,
-          options: data.options,
-          difficulty: data.difficulty,
-          topic_name: data.topic,
-          selection_strategy: 'traditional'
-        });
-        setQuestionCount(1);
-      }
-      setIsLoading(false);
-    } catch (error) {
-      console.error('Failed to get traditional question:', error);
-      setIsLoading(false);
-    }
-  };
 
   const getNextQuestion = async (sessionId: number) => {
     try {
-      console.log(`Fetching next question for session ${sessionId}`);
       const response = await fetch(`http://localhost:8000/api/v1/adaptive/question/${sessionId}`);
-      console.log(`Response status: ${response.status}`);
       
       if (!response.ok) {
-        console.log('Response not ok, likely 404 - no more questions');
         setCurrentQuestion(null);
         await loadDashboard(); // Refresh dashboard
         return;
       }
       
       const data = await response.json();
-      console.log('Question data received:', data);
       
       if (data.error) {
-        // Session complete or no more questions
-        console.log('Data contains error:', data.error);
-        if (data.error === 'No suitable questions found' || data.suggestion === 'explore_new_topics') {
-          console.log('No questions found, falling back to traditional quiz');
-          await startTraditionalQuiz();
-          return;
-        }
         setCurrentQuestion(null);
         await loadDashboard(); // Refresh dashboard
       } else {
@@ -265,9 +200,8 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
       setIsLoading(false);
     } catch (error) {
       console.error('Failed to get question:', error);
-      // Try fallback to traditional quiz
-      console.log('Error getting adaptive question, trying traditional quiz');
-      await startTraditionalQuiz();
+      setCurrentQuestion(null);
+      await loadDashboard();
       setIsLoading(false);
     }
   };
@@ -575,10 +509,7 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
             </div>
           </div>
           <button
-            onClick={() => {
-              console.log('Button clicked!');
-              startLearning();
-            }}
+            onClick={startLearning}
             disabled={isLoading}
             className="bg-white text-blue-600 px-8 py-4 rounded-lg font-semibold text-lg hover:bg-blue-50 transition-colors disabled:opacity-50 shadow-lg"
           >

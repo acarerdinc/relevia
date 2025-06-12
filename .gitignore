@@ -83,7 +83,9 @@ frontend/tsconfig.tsbuildinfo
 # API Keys (ensure no secrets are committed)
 **/config/secrets.py
 **/config/production.py
-**/.env*
+**/.env
+**/.env.local
+**/.env.*.local
 
 # Testing
 .coverage

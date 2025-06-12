@@ -181,11 +181,11 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
 
   const startTraditionalQuiz = async () => {
     try {
-      // Start quiz with AI root topic (ID 378)
+      // Start quiz with AI root topic (ID 1)
       const startResponse = await fetch('http://localhost:8000/api/v1/quiz/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic_id: 378, user_id: 1 })
+        body: JSON.stringify({ topic_id: 1, user_id: 1 })
       });
       const startData = await startResponse.json();
       

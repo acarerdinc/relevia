@@ -27,7 +27,11 @@
       "Bash(find:*)",
       "Bash(docker-compose up:*)",
       "Bash(docker logs:*)",
-      "Bash(docker-compose down:*)"
+      "Bash(docker-compose down:*)",
+      "Bash(git rm:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ],
     "deny": []
   }

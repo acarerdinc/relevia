@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:chatgpt.com)",
+      "Bash(mkdir:*)",
+      "Bash(npx create-next-app:*)",
+      "Bash(ls:*)",
+      "Bash(chmod:*)",
+      "Bash(/Users/acar/projects/spark/setup-frontend.sh)",
+      "Bash(python3:*)",
+      "Bash(source:*)",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(node:*)",
+      "Bash(npm run build:*)",
+      "Bash(mv:*)",
+      "Bash(curl:*)",
+      "Bash(PYTHONPATH=/Users/acar/projects/spark/backend python scripts/setup/reset_and_reseed.py)",
+      "Bash(PYTHONPATH=/Users/acar/projects/spark/backend python scripts/fix_schema_sqlalchemy.py)",
+      "Bash(PYTHONPATH=/Users/acar/projects/spark/backend python scripts/setup/reset_to_minimal_infinite.py)",
+      "Bash(pkill:*)",
+      "Bash(rm:*)",
+      "Bash(grep:*)",
+      "Bash(PYTHONPATH=/Users/acar/projects/spark/backend python scripts/reset_user_progress.py 1)",
+      "Bash(./reset.sh:*)",
+      "Bash(PYTHONPATH:*)",
+      "Bash(find:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker-compose down:*)"
+    ],
+    "deny": []
+  }
+}

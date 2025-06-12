@@ -175,8 +175,9 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
       } else if (data.session_id) {
         setSessionId(data.session_id);
         await getNextQuestion(data.session_id);
-      } else if (data.suggestion === 'explore_new_areas') {
+      } else if (data.suggestion === 'explore_new_areas' || data.suggestion === 'explore_new_topics' || data.error === 'no_questions_available') {
         // Fallback to traditional quiz with AI root topic
+        console.log('Falling back to traditional quiz');
         await startTraditionalQuiz();
       }
     } catch (error) {
@@ -249,6 +250,11 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
       if (data.error) {
         // Session complete or no more questions
         console.log('Data contains error:', data.error);
+        if (data.error === 'No suitable questions found' || data.suggestion === 'explore_new_topics') {
+          console.log('No questions found, falling back to traditional quiz');
+          await startTraditionalQuiz();
+          return;
+        }
         setCurrentQuestion(null);
         await loadDashboard(); // Refresh dashboard
       } else {
@@ -259,9 +265,9 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
       setIsLoading(false);
     } catch (error) {
       console.error('Failed to get question:', error);
-      // Also set currentQuestion to null on error to show dashboard
-      setCurrentQuestion(null);
-      await loadDashboard();
+      // Try fallback to traditional quiz
+      console.log('Error getting adaptive question, trying traditional quiz');
+      await startTraditionalQuiz();
       setIsLoading(false);
     }
   };

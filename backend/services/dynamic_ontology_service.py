@@ -171,8 +171,15 @@ class DynamicOntologyService:
         
         unlocked_topics = []
         
-        # Check if proficiency threshold is met for unlocking
-        if accuracy >= self.PROFICIENCY_THRESHOLDS["beginner"] and not progress.proficiency_threshold_met:
+        # Check if proficiency threshold is met for unlocking or if user has progressed to higher mastery levels
+        should_generate_subtopics = (
+            # First time reaching proficiency
+            (accuracy >= self.PROFICIENCY_THRESHOLDS["beginner"] and not progress.proficiency_threshold_met) or
+            # Progressive generation for higher mastery levels with few existing children
+            (accuracy >= self.PROFICIENCY_THRESHOLDS["intermediate"] and progress.current_mastery_level in ["competent", "proficient", "expert", "master"])
+        )
+        
+        if should_generate_subtopics:
             progress.proficiency_threshold_met = True
             
             # Get the current topic for generation context
@@ -231,21 +238,27 @@ class DynamicOntologyService:
             )
             existing_count = len(existing_children.scalars().all())
             
-            # Only generate new topics if we have NO existing children and didn't unlock any existing ones
-            # This prevents topic generation during active quiz sessions and reduces API calls
-            if existing_count == 0 and len(unlocked_topics) == 0:
-                print(f"🎯 Generating new subtopics for {current_topic.name} (no existing children)")
+            # Generate new topics based on different conditions:
+            # 1. First time: no existing children
+            # 2. Progressive: higher mastery levels with reasonable limits (max 12-15 children to avoid overwhelming)
+            max_children_for_progressive = 12  # Reasonable limit for subtopic expansion
+            should_generate_new = (
+                (existing_count == 0 and len(unlocked_topics) == 0) or  # First time generation
+                (progress.current_mastery_level in ["competent", "proficient", "expert"] and 
+                 existing_count < max_children_for_progressive and 
+                 len(unlocked_topics) == 0)  # Progressive generation for higher mastery
+            )
+            
+            if should_generate_new:
+                generation_reason = "no existing children" if existing_count == 0 else f"progressive generation at {progress.current_mastery_level} level"
+                print(f"🎯 Generating new subtopics for {current_topic.name} ({generation_reason}, {existing_count} existing)")
                 
                 # Get user interests for context
                 user_interests = await self._get_user_interests_for_generation(db, user_id)
                 
-                # Generate 4-6 topics to ensure comprehensive coverage
-                # More topics for broader domains
-                count = 6 if current_topic.name == "Artificial Intelligence" else 5
-                
-                # Dynamically generate new subtopics
+                # Dynamically generate new subtopics (no count restriction - AI will determine optimal number)
                 generated_subtopics = await self.topic_generator.generate_subtopics(
-                    db, current_topic, user_interests, count=count
+                    db, current_topic, user_interests, count=None  # Let AI determine how many are needed
                 )
                 
                 # Create the topics in database
@@ -314,8 +327,15 @@ class DynamicOntologyService:
         
         unlocked_topics = []
         
-        # Check if proficiency threshold is met for unlocking
-        if accuracy >= self.PROFICIENCY_THRESHOLDS["beginner"] and not progress.proficiency_threshold_met:
+        # Check if proficiency threshold is met for unlocking or if user has progressed to higher mastery levels
+        should_generate_subtopics = (
+            # First time reaching proficiency
+            (accuracy >= self.PROFICIENCY_THRESHOLDS["beginner"] and not progress.proficiency_threshold_met) or
+            # Progressive generation for higher mastery levels with few existing children
+            (accuracy >= self.PROFICIENCY_THRESHOLDS["intermediate"] and progress.current_mastery_level in ["competent", "proficient", "expert", "master"])
+        )
+        
+        if should_generate_subtopics:
             progress.proficiency_threshold_met = True
             
             # Get the current topic for generation context

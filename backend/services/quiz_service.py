@@ -148,6 +148,22 @@ class AdaptiveQuizEngine:
         db.add(quiz_question)
         await db.commit()
         
+        # Record question in history for diversity tracking
+        try:
+            from services.question_diversity_service import question_diversity_service
+            await question_diversity_service.record_question_asked(
+                db=db,
+                user_id=session.user_id,
+                topic_id=topic.id,
+                question_id=question.id,
+                session_id=session.id,
+                question_content=question.content
+            )
+            logger.info(f"Recorded question diversity history for question {question.id}")
+        except Exception as e:
+            logger.warning(f"Failed to record question diversity history: {e}")
+            # Don't fail the question generation if history tracking fails
+        
         # Get user progress for this topic to include progress information
         user_progress_result = await db.execute(
             select(UserSkillProgress)

@@ -160,3 +160,21 @@ class LearningGoal(Base):
     
     # Relationships
     user = relationship("User")
+
+class TopicQuestionHistory(Base):
+    __tablename__ = "topic_question_history"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    topic_id = Column(Integer, ForeignKey("topics.id"), nullable=False)
+    question_id = Column(Integer, ForeignKey("questions.id"), nullable=False)
+    session_id = Column(Integer, ForeignKey("quiz_sessions.id"), nullable=False)
+    question_content = Column(Text, nullable=False)  # Store question text for analysis
+    extracted_concepts = Column(JSON)  # Key concepts/themes from the question
+    asked_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Relationships
+    user = relationship("User")
+    topic = relationship("Topic")
+    question = relationship("Question")
+    session = relationship("QuizSession")

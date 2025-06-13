@@ -373,20 +373,36 @@ class AdaptiveQuestionSelector:
         topic: Dict,
         current_session_id: Optional[int] = None
     ) -> Optional[Dict]:
-        """Get a question from the selected topic, avoiding recently asked ones"""
+        """Get a question from the selected topic, avoiding recently asked ones with semantic diversity"""
         
         topic_id = topic['id']
         
-        # Get recently asked questions from current session only
-        # Allow questions to be repeated across different sessions for infinite learning
+        # Enhanced duplicate detection with semantic awareness
         recently_asked = set()
+        recently_asked_concepts = []
+        
         if current_session_id:
-            recent_result = await db.execute(
+            # Get questions from current session (immediate duplicates)
+            recent_session_result = await db.execute(
                 select(QuizQuestion.question_id)
                 .where(QuizQuestion.quiz_session_id == current_session_id)
             )
-            recently_asked = {row[0] for row in recent_result.fetchall()}
+            recently_asked = {row[0] for row in recent_session_result.fetchall()}
             logger.info(f"Session {current_session_id}: Found {len(recently_asked)} recently asked questions in topic {topic['name']}")
+            
+            # Get recent question concepts for semantic diversity (across recent sessions)
+            try:
+                from services.question_diversity_service import question_diversity_service
+                recent_history = await question_diversity_service.get_recent_question_history(
+                    db, user_id, topic_id, limit=5
+                )
+                for question_record in recent_history:
+                    recently_asked_concepts.extend(question_record.get('concepts', []))
+                
+                if recently_asked_concepts:
+                    logger.info(f"Topic {topic['name']}: Found recent concepts: {', '.join(set(recently_asked_concepts)[:5])}")
+            except Exception as e:
+                logger.warning(f"Could not get recent concepts for topic {topic['name']}: {e}")
         
         # Always filter recently asked questions to prevent immediate duplicates
         # Only disable filter as absolute last resort when no questions available
@@ -435,7 +451,36 @@ class AdaptiveQuestionSelector:
         
         if not suitable_questions:
             suitable_questions = available_questions
-            
+        
+        # Apply semantic diversity filtering if we have recent concepts
+        if recently_asked_concepts and len(suitable_questions) > 1:
+            try:
+                from services.question_diversity_service import question_diversity_service
+                from collections import Counter
+                
+                # Count frequency of recent concepts
+                concept_frequency = Counter(recently_asked_concepts)
+                overused_concepts = [concept for concept, freq in concept_frequency.items() if freq >= 2]
+                
+                if overused_concepts:
+                    # Filter out questions that contain overused concepts
+                    diverse_questions = []
+                    for question in suitable_questions:
+                        question_concepts = await question_diversity_service.extract_question_concepts(question.content)
+                        # Check if question contains any overused concepts
+                        has_overused = any(concept in overused_concepts for concept in question_concepts)
+                        if not has_overused:
+                            diverse_questions.append(question)
+                    
+                    if diverse_questions:
+                        suitable_questions = diverse_questions
+                        logger.info(f"Topic {topic['name']}: Filtered to {len(diverse_questions)} semantically diverse questions")
+                    else:
+                        logger.info(f"Topic {topic['name']}: No diverse questions found, using all suitable questions")
+                        
+            except Exception as e:
+                logger.warning(f"Semantic filtering failed for topic {topic['name']}: {e}")
+        
         # Randomly select from suitable questions
         selected_question = random.choice(suitable_questions)
         
@@ -719,9 +764,12 @@ class AdaptiveQuestionSelector:
         user_id: int, 
         topic: Dict
     ) -> Optional[Dict]:
-        """Generate a new question for the given topic using AI"""
+        """Generate a new question for the given topic using AI with semantic diversity checking"""
         
         try:
+            # Import diversity service
+            from services.question_diversity_service import question_diversity_service
+            
             # Get user's skill level AND topic depth for difficulty
             user_skill = topic.get('skill_level', 0.5)
             
@@ -734,8 +782,13 @@ class AdaptiveQuestionSelector:
             
             target_difficulty = min(10, max(1, base_difficulty + depth_bonus + random.randint(-1, 2)))
             
-            # Generate question using Gemini with timeout protection
-            print(f"🤖 Generating AI question for {topic['name']} (difficulty {target_difficulty})")
+            # Generate diversity context to avoid repetitive themes
+            diversity_context = await question_diversity_service.generate_diversity_prompt_context(
+                db, user_id, topic['id'], topic['name']
+            )
+            
+            # Generate question using Gemini with timeout protection and diversity context
+            print(f"🤖 Generating AI question for {topic['name']} (difficulty {target_difficulty}) with diversity context")
             generation_start = time.time()
             
             prompt = f"""Create a multiple-choice question about {topic['name']}.
@@ -745,12 +798,16 @@ Description: {topic.get('description', 'No description available')}
 Difficulty level: {target_difficulty}/10
 User skill level: {user_skill:.2f}
 
+DIVERSITY CONTEXT (IMPORTANT - READ CAREFULLY):
+{diversity_context}
+
 Requirements:
 - Create a clear, educational question appropriate for difficulty level {target_difficulty}
 - Provide exactly 4 multiple choice options
 - Write an explanation that stands alone and doesn't reference A/B/C/D options
 - The explanation should be 2-3 sentences that clearly state the correct answer and explain why
 - Focus on teaching the concept, not just stating which option was correct
+- CRITICAL: Ensure your question explores NEW aspects mentioned in the diversity context above
 
 Format your response as JSON:
 {{
@@ -767,7 +824,8 @@ Make sure the explanation:
 - Restates the correct answer in full
 - Explains the concept clearly
 - Doesn't use phrases like "Option A" or "Choice B"
-- Teaches the user something valuable about the topic"""
+- Teaches the user something valuable about the topic
+- Covers DIFFERENT aspects than recent questions (see diversity context above)"""
 
             try:
                 # Set a shorter timeout for Gemini API call
@@ -830,6 +888,63 @@ Make sure the explanation:
                     print(f"Invalid answer index for topic {topic['name']}: {correct_answer}")
                     return None
             
+            # Validate diversity before accepting the question
+            proposed_concepts = await question_diversity_service.extract_question_concepts(question_data['question'])
+            diversity_check = await question_diversity_service.check_concept_diversity(
+                db, user_id, topic['id'], proposed_concepts
+            )
+            
+            # Log diversity analysis
+            print(f"🎯 Diversity check for topic {topic['name']}: score={diversity_check['diversity_score']:.2f}, diverse={diversity_check['is_diverse']}")
+            if diversity_check['recommendations']:
+                print(f"💡 Recommendations: {', '.join(diversity_check['recommendations'])}")
+            
+            # If question is not diverse enough, try to regenerate once
+            if not diversity_check['is_diverse'] and diversity_check['diversity_score'] < 0.3:
+                print(f"⚠️  Question too similar to recent ones (score={diversity_check['diversity_score']:.2f}), attempting regeneration...")
+                
+                # Add stronger diversity instruction and try again
+                enhanced_context = diversity_context + f"\n\nSTRONG REQUIREMENT: Your previous attempt was too similar to recent questions. Focus specifically on these underexplored areas: {', '.join(diversity_check['recommendations'])}. Create a question about a COMPLETELY DIFFERENT aspect of {topic['name']}."
+                
+                enhanced_prompt = prompt.replace(diversity_context, enhanced_context)
+                
+                try:
+                    retry_response = await asyncio.wait_for(
+                        gemini_service.generate_content(enhanced_prompt),
+                        timeout=5.0
+                    )
+                    
+                    if retry_response:
+                        # Parse retry response
+                        retry_json_content = retry_response.strip()
+                        if retry_json_content.startswith('```json'):
+                            retry_json_content = re.sub(r'^```json\s*', '', retry_json_content)
+                            retry_json_content = re.sub(r'\s*```$', '', retry_json_content)
+                        elif retry_json_content.startswith('```'):
+                            retry_json_content = re.sub(r'^```\s*', '', retry_json_content)
+                            retry_json_content = re.sub(r'\s*```$', '', retry_json_content)
+                        
+                        retry_question_data = json.loads(retry_json_content)
+                        
+                        # Validate retry response
+                        if (all(field in retry_question_data for field in required_fields) and 
+                            len(retry_question_data['options']) == 4):
+                            
+                            # Check retry diversity
+                            retry_concepts = await question_diversity_service.extract_question_concepts(retry_question_data['question'])
+                            retry_diversity = await question_diversity_service.check_concept_diversity(
+                                db, user_id, topic['id'], retry_concepts
+                            )
+                            
+                            if retry_diversity['is_diverse']:
+                                print(f"✅ Retry successful! New diversity score: {retry_diversity['diversity_score']:.2f}")
+                                question_data = retry_question_data  # Use the retry question
+                                proposed_concepts = retry_concepts
+                            else:
+                                print(f"⚠️  Retry still not diverse enough ({retry_diversity['diversity_score']:.2f}), using original")
+                except Exception as retry_error:
+                    print(f"❌ Retry failed: {retry_error}, using original question")
+            
             # Create and save the question to the database
             new_question = Question(
                 topic_id=topic['id'],
@@ -845,7 +960,8 @@ Make sure the explanation:
             await db.commit()
             await db.refresh(new_question)
             
-            print(f"Successfully created new question {new_question.id} for topic {topic['name']}")
+            print(f"✅ Successfully created new question {new_question.id} for topic {topic['name']}")
+            print(f"📝 Question concepts: {', '.join(proposed_concepts)}")
             
             # Return the question data in the expected format
             return {
@@ -858,7 +974,9 @@ Make sure the explanation:
                 'selection_strategy': 'generated',
                 'topic_ucb_score': topic.get('ucb_score', 0),
                 'topic_interest_score': topic.get('interest_score', 0.5),
-                'is_generated': True
+                'is_generated': True,
+                'diversity_score': diversity_check['diversity_score'],
+                'extracted_concepts': proposed_concepts
             }
             
         except Exception as e:

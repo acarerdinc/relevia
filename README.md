@@ -16,6 +16,13 @@ An intelligent learning platform that uses **Multi-Armed Bandit algorithms** and
 - **True infinite tree structure** - no predefined limits
 - **Meaningful progression** requiring demonstrated understanding
 
+### 🎭 **Intelligent Question Diversity**
+- **Semantic analysis** prevents repetitive themes (no more "Transformer obsession")
+- **Context-aware generation** includes recent question history in AI prompts
+- **Cross-session tracking** maintains diversity across learning sessions
+- **Automatic retry** regenerates questions that are too similar
+- **Concept cooldowns** ensure varied learning experiences
+
 ### 🔄 **Session Continuity**
 - **Remembers where you left off** across sessions
 - **Strong recency bias** to continue from last topic
@@ -39,6 +46,7 @@ backend/
 │   ├── adaptive_interest_tracker.py     # Interest inference engine
 │   ├── adaptive_quiz_service.py         # Main service orchestrator
 │   ├── dynamic_ontology_service.py      # Topic unlocking logic
+│   ├── question_diversity_service.py    # Semantic question diversity
 │   └── gemini_service.py                # AI question generation
 ├── db/                  # Database models and connection
 └── core/                # Configuration and utilities
@@ -155,6 +163,23 @@ Artificial Intelligence (Root)
 - **Topic status** explains current learning phase
 - **No infinite scrolling** - progress bars at bottom
 
+## 📸 Screenshots
+
+### 🎯 **Intelligent Question Diversity**
+The system generates sophisticated, varied questions that explore different aspects of topics, preventing repetitive themes.
+
+**Example: Advanced Multi-Modal Learning Question**
+![Question Diversity Example](docs/images/question-diversity-example.png)
+
+*This screenshot shows the system asking a complex question about fine-tuning Transformer models with CNNs for image-based text processing - demonstrating the sophisticated, diverse questions the AI generates rather than basic repetitive ones.*
+
+### 🌟 **Key Question Diversity Features:**
+- **Semantic Analysis**: Prevents asking similar questions about the same concepts
+- **Context Awareness**: Includes recent question history in AI generation prompts  
+- **Automatic Retry**: Regenerates questions that are too similar to recent ones
+- **Cross-Session Tracking**: Maintains diversity across learning sessions
+- **Concept Cooldowns**: Avoids overused themes like "Transformer architecture obsession"
+
 ## 🔬 Technical Implementation
 
 ### Multi-Armed Bandit Algorithm
@@ -181,6 +206,36 @@ if signal > 0:
 else:
     interest_score = max(0.0, interest_score + signal * 0.2)
 ```
+
+### 🎯 Question Diversity System
+Prevents repetitive themes using advanced semantic analysis:
+
+```python
+# Concept extraction and diversity checking
+recent_concepts = await get_recent_question_history(user_id, topic_id, limit=5)
+diversity_context = generate_diversity_prompt_context(recent_concepts)
+
+# Enhanced AI prompt with diversity instructions
+prompt = f"""Create a question about {topic}.
+DIVERSITY CONTEXT: {diversity_context}
+AVOID these recently covered themes: {overused_concepts}
+CONSIDER exploring: {underexplored_concepts}"""
+
+# Validate generated question
+proposed_concepts = extract_question_concepts(generated_question)
+diversity_score = check_concept_diversity(proposed_concepts, recent_concepts)
+
+# Retry if too similar (diversity_score < 0.3)
+if not diverse_enough:
+    regenerate_with_stronger_diversity_instructions()
+```
+
+**Key Components:**
+- `QuestionDiversityService` - Semantic analysis and concept tracking
+- `TopicQuestionHistory` - Cross-session question and concept storage  
+- Enhanced prompts with "AVOID these themes" instructions
+- Automatic retry for questions scoring below diversity threshold
+- Real-time concept extraction using pattern matching and NLP
 
 ## 🧪 Testing
 

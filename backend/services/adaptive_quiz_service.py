@@ -164,7 +164,7 @@ class AdaptiveQuizService:
                 feedback_message = f"Not quite. {question.explanation} Your answer was '{user_answer}', but understanding this concept is what matters most!"
         elif action == "teach_me":
             is_correct = None
-            feedback_message = f"Great choice to learn more! {question.explanation} Taking time to understand concepts deeply is a sign of effective learning."
+            feedback_message = f"Great choice to learn more! {question.explanation}"
         elif action == "skip":
             is_correct = None
             feedback_message = "No problem! Let's explore something different. Every learner has their own path and pace."
@@ -315,6 +315,22 @@ class AdaptiveQuizService:
         
         db.add(quiz_question)
         await db.commit()
+        
+        # Record question in history for diversity tracking
+        try:
+            from services.question_diversity_service import question_diversity_service
+            await question_diversity_service.record_question_asked(
+                db=db,
+                user_id=session.user_id,
+                topic_id=question_data["topic_id"],
+                question_id=question_data["question_id"],
+                session_id=session.id,
+                question_content=question_data["question"]
+            )
+            logger.info(f"Recorded question diversity history for question {question_data['question_id']}")
+        except Exception as e:
+            logger.warning(f"Failed to record question diversity history: {e}")
+            # Don't fail the question generation if history tracking fails
         
         # Get current topic progress for visual feedback
         topic_progress = await self._get_current_topic_progress(db, session.user_id, question_data["topic_id"])

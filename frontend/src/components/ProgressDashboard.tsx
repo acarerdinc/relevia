@@ -94,17 +94,17 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
         }
       });
       
-      // Calculate positions for tree layout
+      // Initialize expanded nodes first - expand root and its children by default
       if (roots.length > 0) {
-        calculateTreeLayout(roots[0], dimensions.width / 2, 100, dimensions.width / 4);
-        
-        // Initialize expanded nodes - expand root and its children by default
         const initialExpanded = new Set<number>();
         initialExpanded.add(roots[0].id);
         roots[0].children?.forEach(child => {
           initialExpanded.add(child.id);
         });
         setExpandedNodes(initialExpanded);
+        
+        // Calculate positions for tree layout with proper expanded state
+        calculateTreeLayout(roots[0], dimensions.width / 2, 100, dimensions.width / 4, 0, initialExpanded);
       }
       
       setProgress({
@@ -118,13 +118,26 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
     }
   };
 
-  const calculateTreeLayout = (node: TopicNode, x: number, y: number, spread: number, level: number = 0) => {
-    node.x = x;
-    node.y = y;
+  const calculateTreeLayout = useCallback((node: TopicNode, x: number, y: number, spread: number, level: number = 0, customExpandedNodes?: Set<number>) => {
+    // Use custom expanded nodes if provided, otherwise use state
+    const currentExpandedNodes = customExpandedNodes || expandedNodes;
+    
+    // Ensure coordinates are valid numbers
+    node.x = isNaN(x) ? 0 : x;
+    node.y = isNaN(y) ? 0 : y;
+    
+    // Always give all children some default position first
+    if (node.children && node.children.length > 0) {
+      node.children.forEach((child, index) => {
+        if (!child.x || !child.y || isNaN(child.x) || isNaN(child.y)) {
+          child.x = x + (index - node.children!.length / 2) * 50;
+          child.y = y + 120;
+        }
+      });
+    }
     
     // Only layout children if node is expanded
-    if (node.children && node.children.length > 0 && expandedNodes.has(node.id)) {
-      // Filter only visible children
+    if (node.children && node.children.length > 0 && currentExpandedNodes.has(node.id)) {
       const visibleChildren = node.children;
       
       if (visibleChildren.length > 0) {
@@ -135,31 +148,40 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
         
         visibleChildren.forEach((child, index) => {
           const childX = startX + (index * childSpread);
-          calculateTreeLayout(child, childX, y + 120, childSpread, level + 1);
+          const childY = y + 120;
+          child.x = childX;
+          child.y = childY;
+          calculateTreeLayout(child, childX, childY, childSpread, level + 1, customExpandedNodes);
         });
       }
+    } else if (node.children && node.children.length > 0) {
+      // For collapsed nodes, still recursively layout children with current positions
+      node.children.forEach((child) => {
+        calculateTreeLayout(child, child.x!, child.y!, spread, level + 1, customExpandedNodes);
+      });
     }
-  };
+  }, [expandedNodes]);
 
   const handleNodeClick = (node: TopicNode) => {
     setSelectedNode(node);
   };
 
   const toggleNodeExpansion = (nodeId: number) => {
-    setExpandedNodes(prev => {
-      const newExpanded = new Set(prev);
-      if (newExpanded.has(nodeId)) {
-        newExpanded.delete(nodeId);
-      } else {
-        newExpanded.add(nodeId);
-      }
-      return newExpanded;
-    });
+    const newExpanded = new Set(expandedNodes);
+    if (newExpanded.has(nodeId)) {
+      newExpanded.delete(nodeId);
+    } else {
+      newExpanded.add(nodeId);
+    }
+    setExpandedNodes(newExpanded);
     
-    // Recalculate layout after expansion change
+    // Recalculate layout with new expansion state
     if (progress?.topics && progress.topics.length > 0) {
-      calculateTreeLayout(progress.topics[0], dimensions.width / 2, 100, dimensions.width / 4);
-      setProgress({ ...progress });
+      const rootNode = progress.topics[0];
+      if (rootNode) {
+        calculateTreeLayout(rootNode, dimensions.width / 2, 100, dimensions.width / 4, 0, newExpanded);
+        setProgress({ ...progress });
+      }
     }
   };
 
@@ -200,6 +222,12 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
   };
 
   const renderNode = (node: TopicNode) => {
+    // Safety check for coordinates
+    if (!node.x || !node.y || isNaN(node.x) || isNaN(node.y)) {
+      console.warn(`Node ${node.name} has invalid coordinates: x=${node.x}, y=${node.y}`);
+      return null;
+    }
+
     const color = getNodeColor(node);
     const isSelected = selectedNode?.id === node.id;
     const isUserGenerated = isUserGeneratedTopic(node);
@@ -209,17 +237,23 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
     return (
       <g key={node.id}>
         {/* Draw connections to children only if expanded */}
-        {isExpanded && node.children?.map(child => (
-          <line
-            key={`${node.id}-${child.id}`}
-            x1={node.x}
-            y1={node.y}
-            x2={child.x}
-            y2={child.y}
-            stroke="#e5e7eb"
-            strokeWidth="2"
-          />
-        ))}
+        {isExpanded && node.children?.map(child => {
+          // Safety check for child coordinates
+          if (!child.x || !child.y || isNaN(child.x) || isNaN(child.y)) {
+            return null;
+          }
+          return (
+            <line
+              key={`${node.id}-${child.id}`}
+              x1={node.x}
+              y1={node.y}
+              x2={child.x}
+              y2={child.y}
+              stroke="#e5e7eb"
+              strokeWidth="2"
+            />
+          );
+        })}
         
         {/* Node circle */}
         <circle

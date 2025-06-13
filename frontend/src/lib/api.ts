@@ -121,6 +121,40 @@ class ApiService {
   async getRecentUnlocks(userId: number, limit: number = 10): Promise<{ recent_unlocks: any[] }> {
     return this.request(`/personalization/unlocks/${userId}?limit=${limit}`);
   }
+  
+  // Progress endpoints
+  async getUserProgressData(userId: number): Promise<any> {
+    return this.request(`/progress/user/${userId}`);
+  }
+  
+  async getTopicProgressDetails(topicId: number, userId: number = 1): Promise<any> {
+    return this.request(`/progress/topic/${topicId}/details?user_id=${userId}`);
+  }
+  
+  // Learning request endpoints
+  async requestLearningTopic(requestText: string, userId: number = 1): Promise<any> {
+    return this.request('/topics/request-learning', {
+      method: 'POST',
+      body: JSON.stringify({
+        request_text: requestText,
+        user_id: userId,
+      }),
+    });
+  }
+  
+  async navigateToTopic(topicId: number, userId: number = 1): Promise<any> {
+    return this.request('/topics/navigate-to-topic', {
+      method: 'POST',
+      body: JSON.stringify({
+        topic_id: topicId,
+        user_id: userId,
+      }),
+    });
+  }
+  
+  async getLearningSuggestions(userId: number = 1, limit: number = 5): Promise<any> {
+    return this.request(`/topics/suggestions?user_id=${userId}&limit=${limit}`);
+  }
 }
 
 export const apiService = new ApiService();

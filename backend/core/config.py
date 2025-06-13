@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     PINECONE_INDEX: str = "relevia-skills"
     
     # CORS
-    ALLOWED_ORIGINS: List[str] = ["http://localhost:3000"]
+    ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:3001"]
     
     class Config:
         env_file = ".env"

@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, and_
 from datetime import datetime, timedelta
+from core.logging_config import logger, performance_logger
 
 from db.models import (
     Topic, QuizSession, Question, QuizQuestion, UserSkillProgress,
@@ -35,6 +36,11 @@ class AdaptiveQuizService:
         # Prefetch cache: {session_id: prefetched_question_data}
         self.prefetch_cache = {}
         self.prefetch_tasks = {}  # Track ongoing prefetch tasks
+        
+        # Question pool cache: {topic_id: [question_data, ...]}
+        self.question_pools = {}
+        self.pool_generation_tasks = {}  # Track ongoing pool generation
+        self.min_pool_size = 3  # Minimum questions to keep per topic pool
         
     async def start_adaptive_session(
         self, 
@@ -78,6 +84,8 @@ class AdaptiveQuizService:
         Get the next question using adaptive exploration/exploitation strategy
         Uses prefetched questions when available for instant loading
         """
+        import time
+        start_time = time.time()
         
         # Get session
         session_result = await db.execute(
@@ -90,7 +98,8 @@ class AdaptiveQuizService:
         
         # Check if we have a prefetched question ready
         if session_id in self.prefetch_cache:
-            print(f"🚀 Using prefetched question for session {session_id}")
+            elapsed_ms = (time.time() - start_time) * 1000
+            logger.info(f"Using prefetched question for session {session_id} ({elapsed_ms:.1f}ms)")
             prefetched_data = self.prefetch_cache.pop(session_id)
             
             # Start prefetching the next question in background
@@ -99,8 +108,16 @@ class AdaptiveQuizService:
             return prefetched_data
         
         # No prefetched question available, generate normally
-        print(f"⏳ No prefetched question, generating for session {session_id}")
+        logger.info(f"No prefetched question, generating for session {session_id}")
         question_data = await self._generate_question_for_session(db, session)
+        
+        elapsed_ms = (time.time() - start_time) * 1000
+        logger.info(f"Question generation completed in {elapsed_ms:.1f}ms for session {session_id}")
+        
+        # Log slow generation
+        if elapsed_ms > 2000:
+            perf_logger = logger.getChild("performance")
+            perf_logger.warning(f"SLOW QUESTION: Generation took {elapsed_ms:.1f}ms for session {session_id}")
         
         if question_data:
             # Start prefetching the next question in background
@@ -147,7 +164,7 @@ class AdaptiveQuizService:
                 feedback_message = f"Not quite. {question.explanation} Your answer was '{user_answer}', but understanding this concept is what matters most!"
         elif action == "teach_me":
             is_correct = None
-            feedback_message = f"Great choice to learn more! {question.explanation} Taking time to understand concepts deeply is a sign of effective learning."
+            feedback_message = f"Great choice to learn more! {question.explanation}"
         elif action == "skip":
             is_correct = None
             feedback_message = "No problem! Let's explore something different. Every learner has their own path and pace."
@@ -223,7 +240,7 @@ class AdaptiveQuizService:
         await db.commit()
         
         # Start prefetching next question in background while user reads feedback
-        print(f"🔄 Starting prefetch after answer submission for session {session.id}")
+        logger.info(f"Starting prefetch after answer submission for session {session.id}")
         asyncio.create_task(self._prefetch_next_question(session.user_id, session.id))
         
         # Build comprehensive response
@@ -256,15 +273,39 @@ class AdaptiveQuizService:
         return response
     
     async def _generate_question_for_session(self, db: AsyncSession, session: QuizSession) -> Optional[Dict]:
-        """Generate a question for the session (extracted from old logic)"""
+        """Generate a question for the session with pool optimization"""
         
         # Use adaptive question selector to find the best question
         question_data = await adaptive_question_selector.select_next_question(
             db, session.user_id, session.id
         )
         
+        # If we got a question, ensure its topic's pool is maintained
+        if question_data and "topic_id" in question_data:
+            await self._ensure_question_pool(db, question_data["topic_id"], session.user_id)
+        
         if not question_data:
             return {"error": "No suitable questions found", "suggestion": "explore_new_topics"}
+        
+        # Handle fallback questions that need to be saved to database first
+        if question_data.get('is_fallback', False) and 'question_id' not in question_data:
+            # Create the fallback question in the database
+            new_question = Question(
+                topic_id=question_data['topic_id'],
+                content=question_data['question'],
+                question_type='multiple_choice',
+                options=question_data['options'],
+                correct_answer=question_data['correct_answer'],
+                explanation=question_data['explanation'],
+                difficulty=question_data['difficulty']
+            )
+            
+            db.add(new_question)
+            await db.flush()  # Get the ID without committing
+            
+            # Add the question_id to the data
+            question_data['question_id'] = new_question.id
+            logger.info(f"Created fallback question in database with ID {new_question.id}")
         
         # Create quiz question link
         quiz_question = QuizQuestion(
@@ -274,6 +315,22 @@ class AdaptiveQuizService:
         
         db.add(quiz_question)
         await db.commit()
+        
+        # Record question in history for diversity tracking
+        try:
+            from services.question_diversity_service import question_diversity_service
+            await question_diversity_service.record_question_asked(
+                db=db,
+                user_id=session.user_id,
+                topic_id=question_data["topic_id"],
+                question_id=question_data["question_id"],
+                session_id=session.id,
+                question_content=question_data["question"]
+            )
+            logger.info(f"Recorded question diversity history for question {question_data['question_id']}")
+        except Exception as e:
+            logger.warning(f"Failed to record question diversity history: {e}")
+            # Don't fail the question generation if history tracking fails
         
         # Get current topic progress for visual feedback
         topic_progress = await self._get_current_topic_progress(db, session.user_id, question_data["topic_id"])
@@ -328,12 +385,14 @@ class AdaptiveQuizService:
                 if question_data and "error" not in question_data:
                     # Store in prefetch cache
                     self.prefetch_cache[session_id] = question_data
-                    print(f"✅ Prefetched question ready for session {session_id}")
+                    logger.info(f"✅ Prefetched question ready for session {session_id}")
                 else:
-                    print(f"❌ Failed to prefetch question for session {session_id}")
+                    logger.warning(f"❌ Failed to prefetch question for session {session_id}")
+                    # Don't cache failed attempts - let the main flow handle it
                 
         except Exception as e:
-            print(f"❌ Prefetch error for session {session_id}: {str(e)}")
+            error_logger = logger.getChild("errors")
+            error_logger.error(f"Prefetch error for session {session_id}: {str(e)}")
         finally:
             # Remove from active prefetch tasks
             self.prefetch_tasks.pop(session_id, None)
@@ -343,6 +402,94 @@ class AdaptiveQuizService:
         self.prefetch_cache.pop(session_id, None)
         self.prefetch_tasks.pop(session_id, None)
         print(f"🧹 Cleaned up cache for session {session_id}")
+    
+    async def _ensure_question_pool(self, db: AsyncSession, topic_id: int, user_id: int):
+        """Ensure a topic has enough questions in its pool, generate if needed"""
+        
+        # Check if pool has enough questions
+        current_pool = self.question_pools.get(topic_id, [])
+        
+        if len(current_pool) >= self.min_pool_size:
+            return  # Pool is healthy
+        
+        # Avoid duplicate generation tasks
+        if topic_id in self.pool_generation_tasks:
+            return
+        
+        print(f"🔄 Question pool for topic {topic_id} needs refilling ({len(current_pool)}/{self.min_pool_size})")
+        
+        # Start background generation task
+        asyncio.create_task(self._refill_question_pool(topic_id, user_id))
+    
+    async def _refill_question_pool(self, topic_id: int, user_id: int):
+        """Background task to refill a topic's question pool"""
+        
+        from db.database import AsyncSessionLocal
+        
+        try:
+            # Mark that we're generating for this topic
+            self.pool_generation_tasks[topic_id] = True
+            
+            async with AsyncSessionLocal() as db:
+                # Get topic info
+                topic_result = await db.execute(
+                    select(Topic).where(Topic.id == topic_id)
+                )
+                topic = topic_result.scalar_one_or_none()
+                
+                if not topic:
+                    return
+                
+                # Generate questions until pool is full
+                questions_needed = self.min_pool_size - len(self.question_pools.get(topic_id, []))
+                generated_count = 0
+                
+                for i in range(questions_needed):
+                    topic_dict = {
+                        'id': topic.id,
+                        'name': topic.name,
+                        'description': topic.description,
+                        'skill_level': 0.5  # Default skill level for pool generation
+                    }
+                    
+                    # Generate question using the selector's method
+                    from services.adaptive_question_selector import adaptive_question_selector
+                    generated_question = await adaptive_question_selector._generate_question_for_topic(
+                        db, user_id, topic_dict
+                    )
+                    
+                    if generated_question:
+                        # Add to pool
+                        if topic_id not in self.question_pools:
+                            self.question_pools[topic_id] = []
+                        
+                        self.question_pools[topic_id].append(generated_question)
+                        generated_count += 1
+                        print(f"✅ Added question to pool for topic {topic.name} ({generated_count}/{questions_needed})")
+                    else:
+                        print(f"❌ Failed to generate question for topic {topic.name}")
+                
+                print(f"🎉 Question pool refill complete for topic {topic.name}: {generated_count} questions added")
+                
+        except Exception as e:
+            print(f"❌ Pool generation error for topic {topic_id}: {str(e)}")
+        finally:
+            # Remove task marker
+            if topic_id in self.pool_generation_tasks:
+                del self.pool_generation_tasks[topic_id]
+    
+    def get_pooled_question(self, topic_id: int) -> Optional[Dict]:
+        """Get a question from the topic's pool if available"""
+        
+        pool = self.question_pools.get(topic_id, [])
+        
+        if pool:
+            # Pop question from pool (FIFO)
+            question = pool.pop(0)
+            print(f"🎯 Using pooled question for topic {topic_id} ({len(pool)} remaining in pool)")
+            return question
+        
+        return None
     
     async def get_learning_dashboard(
         self, 

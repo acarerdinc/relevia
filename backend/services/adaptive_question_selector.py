@@ -3,6 +3,8 @@ Adaptive Question Selector - Multi-Armed Bandit approach for exploration/exploit
 """
 import math
 import random
+import time
+import asyncio
 from typing import Dict, List, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func, update
@@ -13,6 +15,8 @@ from db.models import (
     QuizSession, QuizQuestion
 )
 from services.gemini_service import gemini_service
+from services.dynamic_ontology_builder import dynamic_ontology_builder
+from core.logging_config import logger
 
 
 class AdaptiveQuestionSelector:
@@ -35,9 +39,14 @@ class AdaptiveQuestionSelector:
         current_session_id: Optional[int] = None
     ) -> Optional[Dict]:
         """
-        Select the next question using exploration/exploitation strategy
+        Select the next question using exploration/exploitation strategy with hierarchical progression
         Returns question data or None if no suitable questions found
         """
+        import time
+        start_time = time.time()
+        
+        # Check for new topics to unlock based on progress (hierarchical unlocking)
+        await dynamic_ontology_builder.check_and_unlock_progressive_topics(db, user_id)
         
         # Get all unlocked topics for user
         unlocked_topics = await self._get_unlocked_topics(db, user_id)
@@ -54,24 +63,39 @@ class AdaptiveQuestionSelector:
         selected_topic = await self._select_topic_with_strategy(topic_scores)
         
         if selected_topic:
-            # First, try to generate a new question for this topic
-            print(f"Generating fresh question for top-rated topic: {selected_topic['name']}")
-            generated_question = await self._generate_question_for_topic(db, user_id, selected_topic)
+            # First priority: Check question pool for instant response  
+            # Import here to avoid circular dependency
+            from services.adaptive_quiz_service import adaptive_quiz_service
+            pooled_question = adaptive_quiz_service.get_pooled_question(selected_topic['id'])
             
-            if generated_question:
-                print(f"Successfully generated fresh question for topic {selected_topic['name']}")
+            if pooled_question:
+                elapsed_ms = (time.time() - start_time) * 1000
+                print(f"🎯 Using pooled question for topic {selected_topic['name']} ({elapsed_ms:.1f}ms)")
                 await self._update_topic_selection_stats(db, user_id, selected_topic['id'])
-                return generated_question
+                return pooled_question
             
-            # If generation fails, try existing questions
-            print(f"Generation failed, trying existing questions for topic {selected_topic['name']}")
+            # Second priority: Try existing questions for fast response
+            print(f"🚀 Trying existing questions for topic: {selected_topic['name']}")
             question_data = await self._get_question_from_topic(
                 db, user_id, selected_topic, current_session_id
             )
             
             if question_data:
+                elapsed_ms = (time.time() - start_time) * 1000
+                print(f"✅ Found existing question for topic {selected_topic['name']} ({elapsed_ms:.1f}ms)")
+                logger.info(f"Selected question ID {question_data.get('question_id')} for session {current_session_id}")
                 await self._update_topic_selection_stats(db, user_id, selected_topic['id'])
                 return question_data
+            
+            # Last resort: Generate if no existing questions available
+            print(f"⚡ No existing questions, generating fresh question for topic: {selected_topic['name']}")
+            generated_question = await self._generate_question_for_topic(db, user_id, selected_topic)
+            
+            if generated_question:
+                elapsed_ms = (time.time() - start_time) * 1000
+                print(f"✅ Successfully generated fresh question for topic {selected_topic['name']} ({elapsed_ms:.1f}ms)")
+                await self._update_topic_selection_stats(db, user_id, selected_topic['id'])
+                return generated_question
         
         # If top topic doesn't work, try backup topics
         print(f"Top topic failed, trying backup topics for user {user_id}")
@@ -93,28 +117,53 @@ class AdaptiveQuestionSelector:
                 
             attempted_topics.add(backup_topic['id'])
             
-            # Try generating for backup topic
-            generated_question = await self._generate_question_for_topic(db, user_id, backup_topic)
+            # First: Check question pool for backup topic  
+            # adaptive_quiz_service already imported above
+            pooled_question = adaptive_quiz_service.get_pooled_question(backup_topic['id'])
             
-            if generated_question:
+            if pooled_question:
+                print(f"🎯 Using pooled question for backup topic {backup_topic['name']}")
                 await self._update_topic_selection_stats(db, user_id, backup_topic['id'])
-                return generated_question
+                return pooled_question
             
-            # Try existing questions for backup topic
+            # Second: Try existing questions for backup topic
             question_data = await self._get_question_from_topic(
                 db, user_id, backup_topic, current_session_id
             )
             
             if question_data:
+                print(f"✅ Found existing question for backup topic {backup_topic['name']}")
                 await self._update_topic_selection_stats(db, user_id, backup_topic['id'])
                 return question_data
             
-        # As final fallback, try any available question (ignoring recently asked filter)
-        print(f"All generation attempts failed, using any available question for user {user_id}")
+            # Last: Generate if no existing questions for backup topic
+            generated_question = await self._generate_question_for_topic(db, user_id, backup_topic)
+            
+            if generated_question:
+                print(f"✅ Generated question for backup topic {backup_topic['name']}")
+                await self._update_topic_selection_stats(db, user_id, backup_topic['id'])
+                return generated_question
+            
+        # As final fallback, try any available question (but still prefer non-duplicates)
+        print(f"All generation attempts failed, trying fallback strategies for user {user_id}")
         
+        # First try with duplicate filter still active
         for topic in topic_scores[:3]:
             question_data = await self._get_question_from_topic(
-                db, user_id, topic, None  # Pass None for session_id to disable recently-asked filter
+                db, user_id, topic, current_session_id  # Keep duplicate filter
+            )
+            
+            if question_data:
+                question_data['is_fallback'] = True
+                question_data['fallback_reason'] = 'generation_failed_with_filter'
+                await self._update_topic_selection_stats(db, user_id, topic['id'])
+                return question_data
+        
+        # Absolute last resort: disable duplicate filter
+        print(f"⚠️ All topics exhausted with duplicate filter, trying without filter as last resort")
+        for topic in topic_scores[:3]:
+            question_data = await self._get_question_from_topic(
+                db, user_id, topic, None  # Disable recently-asked filter only as last resort
             )
             
             if question_data:
@@ -123,6 +172,14 @@ class AdaptiveQuestionSelector:
                 question_data['fallback_reason'] = 'generation_failed'
                 await self._update_topic_selection_stats(db, user_id, topic['id'])
                 return question_data
+        
+        # Ultimate fallback: Create a fast template question if everything else fails
+        print(f"🚨 No questions found anywhere - creating emergency fallback for user {user_id}")
+        if topic_scores:
+            emergency_topic = topic_scores[0]  # Use the best topic
+            fallback_question = self._create_fallback_question(emergency_topic, 5)  # Medium difficulty
+            await self._update_topic_selection_stats(db, user_id, emergency_topic['id'])
+            return fallback_question
         
         return None
     
@@ -225,7 +282,12 @@ class AdaptiveQuestionSelector:
             if recent_topic_id and topic_id == recent_topic_id:
                 recency_bonus = 0.5  # STRONG bonus for continuity
             
-            # SPECIALIZATION BOOST: Favor subtopics ONLY when user has mastered parent
+            # HIERARCHICAL PROGRESSION: Favor proper level progression
+            hierarchical_bonus = await self._calculate_hierarchical_bonus(
+                db, user_id, topic, topics
+            )
+            
+            # Legacy specialization logic (keeping for backward compatibility)
             specialization_bonus = 0.0
             if topic.get('name') != "Artificial Intelligence":  # Not the root topic
                 # Check user's mastery of this topic
@@ -233,23 +295,24 @@ class AdaptiveQuestionSelector:
                 if accuracy < 0.6:  # Struggling with this topic
                     specialization_bonus = -0.1  # Slight penalty - need more practice
                 elif selections <= 3:  # New topic with good performance
-                    specialization_bonus = 0.3  # Moderate bonus for exploration
+                    specialization_bonus = 0.1  # Small bonus for exploration
                 else:
-                    specialization_bonus = 0.2  # Small bonus for variety
+                    specialization_bonus = 0.05  # Tiny bonus for variety
             else:
                 # Root topic: check if user has sufficient foundation
                 if topic.get('questions_answered', 0) < 5:
                     specialization_bonus = 0.1  # Slight bonus - build foundation first
                 elif len(topics) > 1 and topic.get('accuracy', 0) >= 0.6:
-                    specialization_bonus = -0.2  # Ready to move deeper
+                    specialization_bonus = -0.1  # Ready to move deeper
             
-            # Calculate base reward with specialization and recency boosts
+            # Calculate base reward with hierarchical progression as primary factor
             base_reward = (
                 self.interest_weight * interest_score +
                 self.proficiency_weight * proficiency_score +
                 self.discovery_weight * exploration_bonus +
-                0.3 * specialization_bonus +  # 30% weight for specialization
-                0.4 * recency_bonus  # 40% weight for continuity - VERY important
+                0.6 * hierarchical_bonus +     # 60% weight for proper progression - HIGHEST PRIORITY
+                0.1 * specialization_bonus +   # 10% weight for legacy specialization
+                0.4 * recency_bonus             # 40% weight for continuity
             )
             
             # UCB confidence interval
@@ -267,6 +330,7 @@ class AdaptiveQuestionSelector:
                 'confidence': confidence,
                 'ucb_score': ucb_score,
                 'exploration_bonus': exploration_bonus,
+                'hierarchical_bonus': hierarchical_bonus,
                 'specialization_bonus': specialization_bonus,
                 'recency_bonus': recency_bonus,
                 'is_recent': topic_id == recent_topic_id
@@ -309,19 +373,39 @@ class AdaptiveQuestionSelector:
         topic: Dict,
         current_session_id: Optional[int] = None
     ) -> Optional[Dict]:
-        """Get a question from the selected topic, avoiding recently asked ones"""
+        """Get a question from the selected topic, avoiding recently asked ones with semantic diversity"""
         
         topic_id = topic['id']
         
-        # Get recently asked questions across ALL sessions for this user (not just current session)
-        # This ensures we don't repeat questions the user has already seen
+        # Enhanced duplicate detection with semantic awareness
         recently_asked = set()
-        recent_result = await db.execute(
-            select(QuizQuestion.question_id)
-            .join(QuizSession, QuizQuestion.quiz_session_id == QuizSession.id)
-            .where(QuizSession.user_id == user_id)
-        )
-        recently_asked = {row[0] for row in recent_result.fetchall()}
+        recently_asked_concepts = []
+        
+        if current_session_id:
+            # Get questions from current session (immediate duplicates)
+            recent_session_result = await db.execute(
+                select(QuizQuestion.question_id)
+                .where(QuizQuestion.quiz_session_id == current_session_id)
+            )
+            recently_asked = {row[0] for row in recent_session_result.fetchall()}
+            logger.info(f"Session {current_session_id}: Found {len(recently_asked)} recently asked questions in topic {topic['name']}")
+            
+            # Get recent question concepts for semantic diversity (across recent sessions)
+            try:
+                from services.question_diversity_service import question_diversity_service
+                recent_history = await question_diversity_service.get_recent_question_history(
+                    db, user_id, topic_id, limit=5
+                )
+                for question_record in recent_history:
+                    recently_asked_concepts.extend(question_record.get('concepts', []))
+                
+                if recently_asked_concepts:
+                    logger.info(f"Topic {topic['name']}: Found recent concepts: {', '.join(set(recently_asked_concepts)[:5])}")
+            except Exception as e:
+                logger.warning(f"Could not get recent concepts for topic {topic['name']}: {e}")
+        
+        # Always filter recently asked questions to prevent immediate duplicates
+        # Only disable filter as absolute last resort when no questions available
         
         # Get available questions from topic, excluding recently asked ones
         # Only select questions with valid options (for multiple choice)
@@ -338,6 +422,7 @@ class AdaptiveQuestionSelector:
         # If no questions available from this topic (all have been asked), 
         # return None to let the selector try a different topic
         if not available_questions:
+            print(f"⚠️  No unused questions left in topic {topic['name']} - need generation or different topic")
             return None
             
         # Select question based on user's current skill level AND topic depth
@@ -366,7 +451,36 @@ class AdaptiveQuestionSelector:
         
         if not suitable_questions:
             suitable_questions = available_questions
-            
+        
+        # Apply semantic diversity filtering if we have recent concepts
+        if recently_asked_concepts and len(suitable_questions) > 1:
+            try:
+                from services.question_diversity_service import question_diversity_service
+                from collections import Counter
+                
+                # Count frequency of recent concepts
+                concept_frequency = Counter(recently_asked_concepts)
+                overused_concepts = [concept for concept, freq in concept_frequency.items() if freq >= 2]
+                
+                if overused_concepts:
+                    # Filter out questions that contain overused concepts
+                    diverse_questions = []
+                    for question in suitable_questions:
+                        question_concepts = await question_diversity_service.extract_question_concepts(question.content)
+                        # Check if question contains any overused concepts
+                        has_overused = any(concept in overused_concepts for concept in question_concepts)
+                        if not has_overused:
+                            diverse_questions.append(question)
+                    
+                    if diverse_questions:
+                        suitable_questions = diverse_questions
+                        logger.info(f"Topic {topic['name']}: Filtered to {len(diverse_questions)} semantically diverse questions")
+                    else:
+                        logger.info(f"Topic {topic['name']}: No diverse questions found, using all suitable questions")
+                        
+            except Exception as e:
+                logger.warning(f"Semantic filtering failed for topic {topic['name']}: {e}")
+        
         # Randomly select from suitable questions
         selected_question = random.choice(suitable_questions)
         
@@ -460,6 +574,121 @@ class AdaptiveQuestionSelector:
                 
         return depth
     
+    async def _calculate_hierarchical_bonus(
+        self, 
+        db: AsyncSession, 
+        user_id: int, 
+        topic: Dict, 
+        all_topics: List[Dict]
+    ) -> float:
+        """
+        Calculate bonus/penalty for hierarchical progression
+        Ensures users progress from general to specific topics appropriately
+        """
+        
+        topic_name = topic['name']
+        topic_id = topic['id']
+        
+        # Calculate topic level dynamically based on database hierarchy
+        topic_level = 0  # Default to root level
+        
+        # Get topic from database to determine its level
+        try:
+            from db.models import Topic
+            topic_result = await db.execute(
+                select(Topic).where(Topic.id == topic_id)
+            )
+            topic_obj = topic_result.scalar_one_or_none()
+            
+            if topic_obj:
+                # Calculate level based on parent hierarchy
+                current_topic = topic_obj
+                level = 0
+                while current_topic.parent_id:
+                    level += 1
+                    parent_result = await db.execute(
+                        select(Topic).where(Topic.id == current_topic.parent_id)
+                    )
+                    current_topic = parent_result.scalar_one_or_none()
+                    if not current_topic or level > 10:  # Prevent infinite loops
+                        break
+                topic_level = level
+            
+        except Exception as e:
+            logger.warning(f"Could not determine topic level for {topic_name}: {e}")
+            topic_level = 2  # Default fallback
+        
+        # Calculate user's mastery in this topic
+        topic_accuracy = topic.get('accuracy', 0)
+        topic_questions = topic.get('questions_answered', 0)
+        
+        # Check parent topic mastery (since we're using dynamic hierarchy)
+        parent_mastery = 1.0  # Default to mastered if no parent
+        
+        try:
+            if topic_obj and topic_obj.parent_id:
+                # Find parent topic in user's unlocked topics
+                for t in all_topics:
+                    if t['id'] == topic_obj.parent_id:
+                        parent_accuracy = t.get('accuracy', 0)
+                        parent_questions = t.get('questions_answered', 0)
+                        
+                        # Calculate mastery score (accuracy * question experience)
+                        if parent_questions >= 3:  # Sufficient experience
+                            parent_mastery = parent_accuracy * min(1.0, parent_questions / 5.0)
+                        else:
+                            parent_mastery = 0.0  # Not enough experience
+                        break
+        except Exception as e:
+            logger.warning(f"Could not determine parent mastery for {topic_name}: {e}")
+        
+        # Calculate hierarchical bonus based on level and parent mastery
+        if topic_level == 0:  # Root topic (AI)
+            if topic_questions < 5:
+                return 0.8  # Strong bonus - build foundation
+            elif topic_accuracy >= 0.7:
+                return -0.3  # Penalty - ready to go deeper
+            else:
+                return 0.2  # Small bonus - still learning basics
+                
+        elif topic_level == 1:  # Major domains (ML, DL, NLP, CV, etc.)
+            if parent_mastery < 0.6:
+                return -0.5  # Strong penalty - parent not mastered
+            elif topic_questions < 3:
+                return 0.6  # Strong bonus - explore major domains
+            elif topic_accuracy >= 0.7:
+                return 0.1  # Small bonus - mastering domain
+            else:
+                return 0.3  # Moderate bonus - learning domain
+                
+        elif topic_level == 2:  # Sub-domains (Supervised, Unsupervised, etc.)
+            if parent_mastery < 0.7:
+                return -0.4  # Penalty - parent not well mastered
+            elif topic_questions < 3:
+                return 0.4  # Good bonus - explore sub-domains
+            elif topic_accuracy >= 0.8:
+                return 0.05  # Tiny bonus - well mastered
+            else:
+                return 0.2  # Small bonus - still learning
+                
+        elif topic_level == 3:  # Specific techniques (Regression, Classification, etc.)
+            if parent_mastery < 0.8:
+                return -0.3  # Penalty - need stronger foundation
+            elif topic_questions < 2:
+                return 0.3  # Moderate bonus - explore techniques
+            else:
+                return 0.1  # Small bonus - advanced exploration
+                
+        else:  # Level 4+ (Very specific algorithms)
+            if parent_mastery < 0.8:
+                return -0.2  # Small penalty - advanced topics need strong foundation
+            elif topic_questions < 2:
+                return 0.2  # Small bonus - very specific exploration
+            else:
+                return 0.05  # Tiny bonus - expert level
+        
+        return 0.0  # Default neutral
+    
     async def get_exploration_stats(
         self, 
         db: AsyncSession, 
@@ -535,9 +764,12 @@ class AdaptiveQuestionSelector:
         user_id: int, 
         topic: Dict
     ) -> Optional[Dict]:
-        """Generate a new question for the given topic using AI"""
+        """Generate a new question for the given topic using AI with semantic diversity checking"""
         
         try:
+            # Import diversity service
+            from services.question_diversity_service import question_diversity_service
+            
             # Get user's skill level AND topic depth for difficulty
             user_skill = topic.get('skill_level', 0.5)
             
@@ -550,7 +782,15 @@ class AdaptiveQuestionSelector:
             
             target_difficulty = min(10, max(1, base_difficulty + depth_bonus + random.randint(-1, 2)))
             
-            # Generate question using Gemini
+            # Generate diversity context to avoid repetitive themes
+            diversity_context = await question_diversity_service.generate_diversity_prompt_context(
+                db, user_id, topic['id'], topic['name']
+            )
+            
+            # Generate question using Gemini with timeout protection and diversity context
+            print(f"🤖 Generating AI question for {topic['name']} (difficulty {target_difficulty}) with diversity context")
+            generation_start = time.time()
+            
             prompt = f"""Create a multiple-choice question about {topic['name']}.
 
 Topic: {topic['name']}
@@ -558,12 +798,16 @@ Description: {topic.get('description', 'No description available')}
 Difficulty level: {target_difficulty}/10
 User skill level: {user_skill:.2f}
 
+DIVERSITY CONTEXT (IMPORTANT - READ CAREFULLY):
+{diversity_context}
+
 Requirements:
 - Create a clear, educational question appropriate for difficulty level {target_difficulty}
 - Provide exactly 4 multiple choice options
 - Write an explanation that stands alone and doesn't reference A/B/C/D options
 - The explanation should be 2-3 sentences that clearly state the correct answer and explain why
 - Focus on teaching the concept, not just stating which option was correct
+- CRITICAL: Ensure your question explores NEW aspects mentioned in the diversity context above
 
 Format your response as JSON:
 {{
@@ -580,13 +824,29 @@ Make sure the explanation:
 - Restates the correct answer in full
 - Explains the concept clearly
 - Doesn't use phrases like "Option A" or "Choice B"
-- Teaches the user something valuable about the topic"""
+- Teaches the user something valuable about the topic
+- Covers DIFFERENT aspects than recent questions (see diversity context above)"""
 
-            response = await gemini_service.generate_content(prompt)
-            
-            if not response:
-                print(f"Failed to generate question content for topic {topic['name']}")
-                return None
+            try:
+                # Set a shorter timeout for Gemini API call
+                response = await asyncio.wait_for(
+                    gemini_service.generate_content(prompt),
+                    timeout=5.0  # 5 second timeout - Gemini is very slow right now
+                )
+                
+                generation_elapsed = (time.time() - generation_start) * 1000
+                print(f"🎯 AI generation took {generation_elapsed:.1f}ms")
+                
+                if not response:
+                    print(f"❌ Empty response from Gemini for topic {topic['name']}")
+                    return None
+                    
+            except asyncio.TimeoutError:
+                logger.warning(f"Gemini API timeout (>5s) for topic {topic['name']} - using fallback")
+                return self._create_fallback_question(topic, target_difficulty)
+            except Exception as api_error:
+                print(f"❌ Gemini API error for topic {topic['name']}: {str(api_error)}")
+                return self._create_fallback_question(topic, target_difficulty)
             
             # Parse the JSON response (handle markdown code blocks)
             import json
@@ -628,6 +888,63 @@ Make sure the explanation:
                     print(f"Invalid answer index for topic {topic['name']}: {correct_answer}")
                     return None
             
+            # Validate diversity before accepting the question
+            proposed_concepts = await question_diversity_service.extract_question_concepts(question_data['question'])
+            diversity_check = await question_diversity_service.check_concept_diversity(
+                db, user_id, topic['id'], proposed_concepts
+            )
+            
+            # Log diversity analysis
+            print(f"🎯 Diversity check for topic {topic['name']}: score={diversity_check['diversity_score']:.2f}, diverse={diversity_check['is_diverse']}")
+            if diversity_check['recommendations']:
+                print(f"💡 Recommendations: {', '.join(diversity_check['recommendations'])}")
+            
+            # If question is not diverse enough, try to regenerate once
+            if not diversity_check['is_diverse'] and diversity_check['diversity_score'] < 0.3:
+                print(f"⚠️  Question too similar to recent ones (score={diversity_check['diversity_score']:.2f}), attempting regeneration...")
+                
+                # Add stronger diversity instruction and try again
+                enhanced_context = diversity_context + f"\n\nSTRONG REQUIREMENT: Your previous attempt was too similar to recent questions. Focus specifically on these underexplored areas: {', '.join(diversity_check['recommendations'])}. Create a question about a COMPLETELY DIFFERENT aspect of {topic['name']}."
+                
+                enhanced_prompt = prompt.replace(diversity_context, enhanced_context)
+                
+                try:
+                    retry_response = await asyncio.wait_for(
+                        gemini_service.generate_content(enhanced_prompt),
+                        timeout=5.0
+                    )
+                    
+                    if retry_response:
+                        # Parse retry response
+                        retry_json_content = retry_response.strip()
+                        if retry_json_content.startswith('```json'):
+                            retry_json_content = re.sub(r'^```json\s*', '', retry_json_content)
+                            retry_json_content = re.sub(r'\s*```$', '', retry_json_content)
+                        elif retry_json_content.startswith('```'):
+                            retry_json_content = re.sub(r'^```\s*', '', retry_json_content)
+                            retry_json_content = re.sub(r'\s*```$', '', retry_json_content)
+                        
+                        retry_question_data = json.loads(retry_json_content)
+                        
+                        # Validate retry response
+                        if (all(field in retry_question_data for field in required_fields) and 
+                            len(retry_question_data['options']) == 4):
+                            
+                            # Check retry diversity
+                            retry_concepts = await question_diversity_service.extract_question_concepts(retry_question_data['question'])
+                            retry_diversity = await question_diversity_service.check_concept_diversity(
+                                db, user_id, topic['id'], retry_concepts
+                            )
+                            
+                            if retry_diversity['is_diverse']:
+                                print(f"✅ Retry successful! New diversity score: {retry_diversity['diversity_score']:.2f}")
+                                question_data = retry_question_data  # Use the retry question
+                                proposed_concepts = retry_concepts
+                            else:
+                                print(f"⚠️  Retry still not diverse enough ({retry_diversity['diversity_score']:.2f}), using original")
+                except Exception as retry_error:
+                    print(f"❌ Retry failed: {retry_error}, using original question")
+            
             # Create and save the question to the database
             new_question = Question(
                 topic_id=topic['id'],
@@ -643,7 +960,8 @@ Make sure the explanation:
             await db.commit()
             await db.refresh(new_question)
             
-            print(f"Successfully created new question {new_question.id} for topic {topic['name']}")
+            print(f"✅ Successfully created new question {new_question.id} for topic {topic['name']}")
+            print(f"📝 Question concepts: {', '.join(proposed_concepts)}")
             
             # Return the question data in the expected format
             return {
@@ -656,12 +974,72 @@ Make sure the explanation:
                 'selection_strategy': 'generated',
                 'topic_ucb_score': topic.get('ucb_score', 0),
                 'topic_interest_score': topic.get('interest_score', 0.5),
-                'is_generated': True
+                'is_generated': True,
+                'diversity_score': diversity_check['diversity_score'],
+                'extracted_concepts': proposed_concepts
             }
             
         except Exception as e:
             print(f"Error generating question for topic {topic['name']}: {str(e)}")
             return None
+    
+    def _create_fallback_question(self, topic: Dict, difficulty: int) -> Dict:
+        """Create a fast fallback question when AI generation fails/times out"""
+        
+        topic_name = topic['name']
+        
+        # Simple template-based questions for different difficulties
+        if difficulty <= 3:
+            question_text = f"What is a fundamental concept in {topic_name}?"
+            options = [
+                f"{topic_name} involves data processing and analysis",
+                f"{topic_name} is only used for entertainment",
+                f"{topic_name} requires no computational resources", 
+                f"{topic_name} cannot be implemented in software"
+            ]
+            correct_answer = options[0]
+            explanation = f"The correct answer is '{correct_answer}'. {topic_name} fundamentally involves processing and analyzing data to extract insights or make decisions."
+        
+        elif difficulty <= 6:
+            question_text = f"Which characteristic is most important in {topic_name} applications?"
+            options = [
+                "Accuracy and reliability of results",
+                "Maximum speed regardless of quality",
+                "Minimizing all computational costs",
+                "Avoiding any form of optimization"
+            ]
+            correct_answer = options[0]
+            explanation = f"The correct answer is '{correct_answer}'. In {topic_name}, accuracy and reliability are crucial for practical applications and user trust."
+        
+        else:  # difficulty > 6
+            question_text = f"What is a key challenge when implementing advanced {topic_name} systems?"
+            options = [
+                "Balancing computational complexity with performance requirements",
+                "Ensuring the system never makes any mistakes",
+                "Avoiding all forms of mathematical analysis",
+                "Making systems completely deterministic"
+            ]
+            correct_answer = options[0]
+            explanation = f"The correct answer is '{correct_answer}'. Advanced {topic_name} systems must carefully balance sophisticated algorithms with practical performance constraints."
+        
+        print(f"🔧 Created fallback question for {topic_name} (difficulty {difficulty})")
+        
+        # Return the question data without trying to save to DB
+        # The calling function will handle database operations
+        return {
+            'question': question_text,
+            'options': options,
+            'difficulty': difficulty,
+            'topic_id': topic['id'],
+            'topic_name': topic['name'],
+            'selection_strategy': 'fallback',
+            'topic_ucb_score': topic.get('ucb_score', 0),
+            'topic_interest_score': topic.get('interest_score', 0.5),
+            'is_generated': True,
+            'is_fallback': True,
+            'correct_answer': correct_answer,
+            'explanation': explanation
+        }
 
 
 # Global instance

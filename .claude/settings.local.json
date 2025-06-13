@@ -32,7 +32,15 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git push:*)",
-      "Bash(git merge:*)"
+      "Bash(npm run dev:*)",
+      "Bash(git checkout:*)",
+      "Bash(open:*)",
+      "Bash(true)",
+      "Bash(git merge:*)",
+      "Bash(rg:*)",
+      "Bash(brew install:*)",
+      "Bash(gh auth:*)",
+      "Bash(git pull:*)"
     ],
     "deny": []
   }

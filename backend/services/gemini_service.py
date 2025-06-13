@@ -1,6 +1,7 @@
 import google.generativeai as genai
 from typing import Dict, List, Optional
 from core.config import settings
+from core.logging_config import logger
 import json
 
 class GeminiService:
@@ -18,10 +19,10 @@ class GeminiService:
                         self.model = genai.GenerativeModel('gemini-pro')
                     except:
                         self.model = None
-                        print("⚠️  WARNING: Could not initialize any Gemini model.")
+                        logger.warning("Could not initialize any Gemini model")
         else:
             self.model = None
-            print("⚠️  WARNING: Gemini API key not configured. Question generation will use fallback questions.")
+            logger.warning("Gemini API key not configured. Question generation will use fallback questions")
     
     async def generate_question(
         self, 
@@ -42,6 +43,8 @@ Difficulty guidelines:
 - 7-9: Advanced analysis and synthesis  
 - 10: Expert-level, cutting-edge topics
 
+CRITICAL REQUIREMENT: You MUST provide exactly 4 options, no more, no less.
+
 Respond with ONLY a valid JSON object in this exact format:
 {{
   "question": "Clear, specific question about {topic}",
@@ -50,7 +53,15 @@ Respond with ONLY a valid JSON object in this exact format:
   "explanation": "Educational explanation of why this answer is correct"
 }}
 
-Important: Return ONLY the JSON object, no additional text."""
+VALIDATION CHECKLIST:
+- Question is clear and specific
+- Exactly 4 options provided (count them!)
+- One correct answer, three plausible but incorrect distractors
+- Correct answer matches exactly one of the options
+- All options are roughly the same length
+- No duplicate options
+
+Return ONLY the JSON object, no additional text."""
         
         if not self.model:
             # Return fallback question if no API key
@@ -75,7 +86,18 @@ Important: Return ONLY the JSON object, no additional text."""
             # Validate required fields
             required_fields = ['question', 'options', 'correct_answer', 'explanation']
             if all(field in result for field in required_fields):
-                return result
+                # Validate exactly 4 options
+                if isinstance(result['options'], list) and len(result['options']) == 4:
+                    return result
+                else:
+                    print(f"Invalid options count: got {len(result['options']) if isinstance(result['options'], list) else 'non-list'}, expected 4")
+                    # Try to fix if we have too many options
+                    if isinstance(result['options'], list) and len(result['options']) > 4:
+                        result['options'] = result['options'][:4]
+                        print(f"Truncated options to 4")
+                        return result
+                    else:
+                        return self._get_fallback_question(topic, difficulty)
             else:
                 print(f"Invalid response format: missing fields")
                 return self._get_fallback_question(topic, difficulty)
@@ -94,10 +116,39 @@ Important: Return ONLY the JSON object, no additional text."""
             raise Exception("Gemini model not initialized")
         
         try:
-            response = self.model.generate_content(prompt)
+            import asyncio
+            import time
+            
+            # Add timing and run sync method in thread pool
+            start_time = time.time()
+            gemini_logger = logger.getChild("gemini")
+            gemini_logger.info("Starting Gemini API call")
+            
+            # Run the synchronous call in a thread pool to avoid blocking
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None, 
+                self.model.generate_content, 
+                prompt
+            )
+            
+            elapsed_ms = (time.time() - start_time) * 1000
+            gemini_logger.info(f"Gemini API completed in {elapsed_ms:.1f}ms")
+            
+            # Log to performance logger if slow
+            if elapsed_ms > 3000:
+                perf_logger = logger.getChild("performance")
+                perf_logger.warning(f"SLOW GEMINI: API call took {elapsed_ms:.1f}ms")
+            
+            # If extremely slow (>30s), log as critical issue
+            if elapsed_ms > 30000:
+                error_logger = logger.getChild("errors")
+                error_logger.error(f"CRITICAL: Gemini API took {elapsed_ms:.1f}ms - consider disabling AI generation temporarily")
+            
             return response.text.strip()
         except Exception as e:
-            print(f"Error generating content: {e}")
+            error_logger = logger.getChild("errors")
+            error_logger.error(f"Gemini API error: {e}")
             raise
     
     def _get_fallback_question(self, topic: str, difficulty: int) -> Dict:
@@ -161,5 +212,175 @@ Important: Return ONLY the JSON object, no additional text."""
             questions.append(question)
         
         return questions
+    
+    async def interpret_learning_request(
+        self, 
+        request_text: str, 
+        existing_topics: List[Dict]
+    ) -> Dict:
+        """
+        Interpret user's free text learning request and find optimal placement in ontology tree
+        """
+        
+        # Prepare existing topics context, prioritizing exact/similar matches
+        request_lower = request_text.lower()
+        request_words = request_lower.split()
+        
+        # Sort topics to put potential matches first
+        def match_score(topic):
+            name_lower = topic['name'].lower()
+            # Exact match gets highest score
+            if name_lower == request_lower:
+                return 100
+            # Check for key words from request
+            score = 0
+            for word in request_words:
+                if len(word) > 2 and word in name_lower:
+                    score += 10
+            return score
+        
+        sorted_topics = sorted(existing_topics, key=match_score, reverse=True)
+        
+        topics_context = "\n".join([
+            f"- {topic['name']}: {topic.get('description', 'No description')} (Level: {topic.get('level', 0)})"
+            for topic in sorted_topics[:25]  # Show more topics, prioritizing matches
+        ])
+        
+        prompt = f"""You are an AI ontology manager. Your job is to determine if a user's learning request matches an existing topic or needs a new topic created.
+
+User's request: "{request_text}"
+
+Existing topics in our ontology (sorted by relevance):
+{topics_context}
+
+STEP-BY-STEP ANALYSIS PROCESS:
+
+STEP 1: CHECK FOR EXACT MATCHES
+- Look for topics that match the user's request exactly or very closely
+- Consider variations like "Large Language Models" vs "Large Language Models (LLMs)"
+- If you find an exact/near-exact match, SET already_exists=true and existing_topic_match to that topic name
+- When exact match exists, use the EXISTING topic name as parsed_topic (don't create variations)
+
+STEP 2: IF NO EXACT MATCH EXISTS
+- Only then consider semantic similarity and parent placement
+- Large Language Models/transformers/BERT/GPT → "Natural Language Processing" or "Modern AI"
+- Computer Vision/CNNs → "Computer Vision"
+- Reinforcement Learning → "Reinforcement Learning"
+
+RESPOND WITH ONLY THIS JSON FORMAT:
+{{
+  "parsed_topic": "Use EXACT existing name if match found, otherwise create new name",
+  "description": "What this topic covers",
+  "main_concepts": ["concept1", "concept2", "concept3"],
+  "suggested_parent": "Parent topic name or null",
+  "confidence": 0.95,
+  "difficulty_level": 4,
+  "reasoning": "Your reasoning",
+  "already_exists": false,
+  "existing_topic_match": null,
+  "semantic_matches": ["similar topics"]
+}}
+
+CRITICAL RULES:
+1. If user asks for "Large Language Models" and you see "Large Language Models (LLMs)" in the list → already_exists=true, existing_topic_match="Large Language Models (LLMs)", parsed_topic="Large Language Models (LLMs)"
+2. Don't create "Advanced" or other variations when exact matches exist
+3. Exact match detection is THE TOP PRIORITY
+4. Only do semantic analysis if no exact match exists
+
+Respond with ONLY the JSON object, no additional text."""
+
+        if not self.model:
+            # Return fallback interpretation
+            return self._get_fallback_interpretation(request_text)
+        
+        try:
+            response_text = await self.generate_content(prompt)
+            
+            # Try to extract JSON if response has extra text
+            if not response_text.startswith('{'):
+                start = response_text.find('{')
+                end = response_text.rfind('}') + 1
+                if start >= 0 and end > start:
+                    response_text = response_text[start:end]
+            
+            # Parse the JSON response
+            result = json.loads(response_text)
+            
+            # Validate required fields
+            required_fields = ['parsed_topic', 'description', 'suggested_parent', 'confidence', 'difficulty_level']
+            if all(field in result for field in required_fields):
+                return result
+            else:
+                logger.warning(f"Invalid interpretation response format: missing fields")
+                return self._get_fallback_interpretation(request_text)
+                
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON parsing error in learning request interpretation: {e}")
+            return self._get_fallback_interpretation(request_text)
+        except Exception as e:
+            logger.error(f"Error interpreting learning request: {e}")
+            return self._get_fallback_interpretation(request_text)
+    
+    def _get_fallback_interpretation(self, request_text: str) -> Dict:
+        """Generate a fallback interpretation when AI is unavailable"""
+        
+        # Simple keyword-based fallback
+        request_lower = request_text.lower()
+        
+        # Common AI/ML keywords mapping
+        keyword_mappings = {
+            'computer vision': {
+                'parent': 'Artificial Intelligence',
+                'difficulty': 5,
+                'description': 'Computer vision and image processing techniques'
+            },
+            'neural network': {
+                'parent': 'Artificial Intelligence', 
+                'difficulty': 6,
+                'description': 'Neural networks and deep learning architectures'
+            },
+            'machine learning': {
+                'parent': 'Artificial Intelligence',
+                'difficulty': 4,
+                'description': 'Machine learning algorithms and techniques'
+            },
+            'reinforcement learning': {
+                'parent': 'Artificial Intelligence',
+                'difficulty': 7,
+                'description': 'Reinforcement learning and agent-based systems'
+            }
+        }
+        
+        # Find best match
+        best_match = None
+        for keyword, info in keyword_mappings.items():
+            if keyword in request_lower:
+                best_match = info
+                break
+        
+        if not best_match:
+            best_match = {
+                'parent': 'Artificial Intelligence',
+                'difficulty': 3,
+                'description': 'AI-related topic based on user request'
+            }
+        
+        # Extract topic name from request (simple approach)
+        topic_name = request_text.strip().title()
+        if len(topic_name) > 50:
+            topic_name = topic_name[:47] + "..."
+        
+        return {
+            "parsed_topic": topic_name,
+            "description": best_match['description'],
+            "main_concepts": [topic_name.lower()],
+            "suggested_parent": best_match['parent'],
+            "confidence": 0.6,
+            "difficulty_level": best_match['difficulty'],
+            "reasoning": "Fallback interpretation based on keyword matching",
+            "already_exists": False,
+            "existing_topic_match": None,
+            "semantic_matches": []
+        }
 
 gemini_service = GeminiService()

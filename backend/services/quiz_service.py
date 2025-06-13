@@ -10,6 +10,7 @@ from datetime import datetime
 
 from db.models import Topic, QuizSession, Question, QuizQuestion, UserSkillProgress
 from services.gemini_service import gemini_service
+from core.logging_config import logger
 
 class AdaptiveQuizEngine:
     """

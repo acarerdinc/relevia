@@ -19,6 +19,7 @@ interface TopicNode {
   children?: TopicNode[];
   x?: number;
   y?: number;
+  expanded?: boolean;
 }
 
 interface UserProgress {
@@ -40,6 +41,7 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [expandedNodes, setExpandedNodes] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     fetchProgress();
@@ -76,7 +78,7 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
       
       // First pass: create all nodes
       data.topics.forEach((topic: TopicNode) => {
-        topicMap.set(topic.id, { ...topic, children: [] });
+        topicMap.set(topic.id, { ...topic, children: [], expanded: false });
       });
       
       // Second pass: build tree structure
@@ -95,6 +97,14 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
       // Calculate positions for tree layout
       if (roots.length > 0) {
         calculateTreeLayout(roots[0], dimensions.width / 2, 100, dimensions.width / 4);
+        
+        // Initialize expanded nodes - expand root and its children by default
+        const initialExpanded = new Set<number>();
+        initialExpanded.add(roots[0].id);
+        roots[0].children?.forEach(child => {
+          initialExpanded.add(child.id);
+        });
+        setExpandedNodes(initialExpanded);
       }
       
       setProgress({
@@ -108,24 +118,49 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
     }
   };
 
-  const calculateTreeLayout = (node: TopicNode, x: number, y: number, spread: number) => {
+  const calculateTreeLayout = (node: TopicNode, x: number, y: number, spread: number, level: number = 0) => {
     node.x = x;
     node.y = y;
     
-    if (node.children && node.children.length > 0) {
-      const childSpread = spread / 1.5;
-      const totalWidth = spread * (node.children.length - 1);
-      const startX = x - totalWidth / 2;
+    // Only layout children if node is expanded
+    if (node.children && node.children.length > 0 && expandedNodes.has(node.id)) {
+      // Filter only visible children
+      const visibleChildren = node.children;
       
-      node.children.forEach((child, index) => {
-        const childX = startX + (index * spread);
-        calculateTreeLayout(child, childX, y + 120, childSpread);
-      });
+      if (visibleChildren.length > 0) {
+        // Adjust spread based on number of children to prevent overlap
+        const childSpread = Math.max(80, spread / Math.max(1.2, visibleChildren.length * 0.3));
+        const totalWidth = childSpread * (visibleChildren.length - 1);
+        const startX = x - totalWidth / 2;
+        
+        visibleChildren.forEach((child, index) => {
+          const childX = startX + (index * childSpread);
+          calculateTreeLayout(child, childX, y + 120, childSpread, level + 1);
+        });
+      }
     }
   };
 
   const handleNodeClick = (node: TopicNode) => {
     setSelectedNode(node);
+  };
+
+  const toggleNodeExpansion = (nodeId: number) => {
+    setExpandedNodes(prev => {
+      const newExpanded = new Set(prev);
+      if (newExpanded.has(nodeId)) {
+        newExpanded.delete(nodeId);
+      } else {
+        newExpanded.add(nodeId);
+      }
+      return newExpanded;
+    });
+    
+    // Recalculate layout after expansion change
+    if (progress?.topics && progress.topics.length > 0) {
+      calculateTreeLayout(progress.topics[0], dimensions.width / 2, 100, dimensions.width / 4);
+      setProgress({ ...progress });
+    }
   };
 
   const handleStartLearning = async (node: TopicNode) => {
@@ -168,11 +203,13 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
     const color = getNodeColor(node);
     const isSelected = selectedNode?.id === node.id;
     const isUserGenerated = isUserGeneratedTopic(node);
+    const isExpanded = expandedNodes.has(node.id);
+    const hasChildren = node.children && node.children.length > 0;
     
     return (
       <g key={node.id}>
-        {/* Draw connections to children */}
-        {node.children?.map(child => (
+        {/* Draw connections to children only if expanded */}
+        {isExpanded && node.children?.map(child => (
           <line
             key={`${node.id}-${child.id}`}
             x1={node.x}
@@ -188,10 +225,10 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
         <circle
           cx={node.x}
           cy={node.y}
-          r={isSelected ? 35 : 30}
+          r={isSelected ? 25 : 20}
           fill={color}
           stroke={isSelected ? '#1f2937' : isUserGenerated ? '#f59e0b' : 'white'}
-          strokeWidth={isSelected ? 4 : isUserGenerated ? 3 : 2}
+          strokeWidth={isSelected ? 3 : isUserGenerated ? 2 : 1.5}
           strokeDasharray={isUserGenerated ? '5,5' : 'none'}
           style={{ cursor: 'pointer', transition: 'all 0.2s' }}
           onClick={() => handleNodeClick(node)}
@@ -200,22 +237,22 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
         {/* User-generated topic indicator */}
         {isUserGenerated && (
           <circle
-            cx={node.x! + 20}
-            cy={node.y! - 20}
-            r="8"
+            cx={node.x! + 15}
+            cy={node.y! - 15}
+            r="6"
             fill="#f59e0b"
             stroke="white"
-            strokeWidth="2"
+            strokeWidth="1.5"
           />
         )}
         
         {isUserGenerated && (
           <text
-            x={node.x! + 20}
-            y={node.y! - 16}
+            x={node.x! + 15}
+            y={node.y! - 12}
             textAnchor="middle"
             className="text-xs font-bold fill-white"
-            style={{ pointerEvents: 'none' }}
+            style={{ pointerEvents: 'none', fontSize: '10px' }}
           >
             ✨
           </text>
@@ -224,22 +261,22 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
         {/* Node text */}
         <text
           x={node.x}
-          y={node.y! + 50}
+          y={node.y! + 40}
           textAnchor="middle"
-          className="text-sm font-medium fill-gray-700"
+          className="text-xs font-medium fill-gray-900 dark:fill-gray-100"
           style={{ pointerEvents: 'none' }}
         >
-          {node.name.length > 20 ? node.name.substring(0, 20) + '...' : node.name}
+          {node.name.length > 15 ? node.name.substring(0, 15) + '...' : node.name}
         </text>
         
         {/* Progress indicator */}
         {node.is_unlocked && node.questions_answered > 0 && (
           <text
             x={node.x}
-            y={node.y! - 3}
+            y={node.y! + 3}
             textAnchor="middle"
             className="text-xs font-bold fill-white"
-            style={{ pointerEvents: 'none' }}
+            style={{ pointerEvents: 'none', fontSize: '10px' }}
           >
             {Math.round(node.accuracy * 100)}%
           </text>
@@ -251,15 +288,43 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
             x={node.x}
             y={node.y! + 5}
             textAnchor="middle"
-            className="text-lg"
-            style={{ pointerEvents: 'none' }}
+            style={{ pointerEvents: 'none', fontSize: '14px' }}
           >
             🔒
           </text>
         )}
         
-        {/* Render children */}
-        {node.children?.map(child => renderNode(child))}
+        {/* Expand/Collapse indicator */}
+        {hasChildren && (
+          <g
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleNodeExpansion(node.id);
+            }}
+            style={{ cursor: 'pointer' }}
+          >
+            <circle
+              cx={node.x}
+              cy={node.y! + 28}
+              r="8"
+              fill="white"
+              stroke="#6b7280"
+              strokeWidth="1.5"
+            />
+            <text
+              x={node.x}
+              y={node.y! + 32}
+              textAnchor="middle"
+              className="text-xs font-bold fill-gray-700 dark:fill-gray-600"
+              style={{ pointerEvents: 'none', fontSize: '10px' }}
+            >
+              {isExpanded ? '−' : '+'}
+            </text>
+          </g>
+        )}
+        
+        {/* Render children only if expanded */}
+        {isExpanded && node.children?.map(child => renderNode(child))}
       </g>
     );
   };
@@ -285,10 +350,11 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
 
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    // Reduce zoom sensitivity - smaller delta values
+    const delta = e.deltaY > 0 ? 0.95 : 1.05;
     setTransform({
       ...transform,
-      scale: Math.max(0.1, Math.min(2, transform.scale * delta))
+      scale: Math.max(0.3, Math.min(3, transform.scale * delta))
     });
   };
 
@@ -366,13 +432,60 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                     🌳 Your Knowledge Tree
                   </h3>
-                  <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                    <span>🖱️ Drag to pan</span>
-                    <span>🔍 Scroll to zoom</span>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          // Expand all nodes
+                          const allNodeIds = new Set<number>();
+                          const collectNodeIds = (node: TopicNode) => {
+                            allNodeIds.add(node.id);
+                            node.children?.forEach(collectNodeIds);
+                          };
+                          progress?.topics.forEach(collectNodeIds);
+                          setExpandedNodes(allNodeIds);
+                          
+                          // Recalculate layout
+                          if (progress?.topics && progress.topics.length > 0) {
+                            calculateTreeLayout(progress.topics[0], dimensions.width / 2, 100, dimensions.width / 4);
+                            setProgress({ ...progress });
+                          }
+                        }}
+                        className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+                      >
+                        Expand All
+                      </button>
+                      <button
+                        onClick={() => {
+                          // Collapse all except root and its children
+                          const newExpanded = new Set<number>();
+                          if (progress?.topics && progress.topics.length > 0) {
+                            newExpanded.add(progress.topics[0].id);
+                            progress.topics[0].children?.forEach(child => {
+                              newExpanded.add(child.id);
+                            });
+                          }
+                          setExpandedNodes(newExpanded);
+                          
+                          // Recalculate layout
+                          if (progress?.topics && progress.topics.length > 0) {
+                            calculateTreeLayout(progress.topics[0], dimensions.width / 2, 100, dimensions.width / 4);
+                            setProgress({ ...progress });
+                          }
+                        }}
+                        className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+                      >
+                        Collapse All
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                      <span>🖱️ Drag to pan</span>
+                      <span>🔍 Scroll to zoom</span>
+                    </div>
                   </div>
                 </div>
                 
-                <div className="relative overflow-hidden bg-white dark:bg-gray-800 rounded-lg" style={{ height: '500px' }}>
+                <div className="relative overflow-hidden bg-gray-50 dark:bg-gray-700 rounded-lg" style={{ height: '500px' }}>
                   <svg
                     ref={svgRef}
                     width="100%"
@@ -391,29 +504,35 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
                 </div>
 
                 {/* Legend */}
-                <div className="mt-4 flex items-center justify-center gap-6 text-sm">
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded-full bg-green-500"></div>
-                    <span className="text-gray-600 dark:text-gray-400">Mastered (80%+)</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded-full bg-blue-500"></div>
-                    <span className="text-gray-600 dark:text-gray-400">Learning (60%+)</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded-full bg-yellow-500"></div>
-                    <span className="text-gray-600 dark:text-gray-400">Struggling (40%+)</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded-full bg-gray-400"></div>
-                    <span className="text-gray-600 dark:text-gray-400">Locked</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="relative">
-                      <div className="w-4 h-4 rounded-full bg-blue-500 border-2 border-yellow-500" style={{borderStyle: 'dashed'}}></div>
-                      <div className="absolute -top-1 -right-1 text-xs">✨</div>
+                <div className="mt-4 space-y-2">
+                  <div className="flex items-center justify-center gap-6 text-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded-full bg-green-500"></div>
+                      <span className="text-gray-600 dark:text-gray-400">Mastered (80%+)</span>
                     </div>
-                    <span className="text-gray-600 dark:text-gray-400">Your Request</span>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded-full bg-blue-500"></div>
+                      <span className="text-gray-600 dark:text-gray-400">Learning (60%+)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded-full bg-yellow-500"></div>
+                      <span className="text-gray-600 dark:text-gray-400">Struggling (40%+)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded-full bg-gray-400"></div>
+                      <span className="text-gray-600 dark:text-gray-400">Locked</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="relative">
+                        <div className="w-4 h-4 rounded-full bg-blue-500 border-2 border-yellow-500" style={{borderStyle: 'dashed'}}></div>
+                        <div className="absolute -top-1 -right-1 text-xs">✨</div>
+                      </div>
+                      <span className="text-gray-600 dark:text-gray-400">Your Request</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-center gap-4 text-xs text-gray-500 dark:text-gray-500">
+                    <span>💡 Click + to expand branches</span>
+                    <span>👆 Click node to see details</span>
                   </div>
                 </div>
               </div>

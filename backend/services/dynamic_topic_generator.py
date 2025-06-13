@@ -65,41 +65,54 @@ class DynamicTopicGenerator:
         # Determine difficulty based on interest and current topic depth
         difficulty_guidance = self._get_difficulty_guidance(parent_topic, interest_score)
         
-        prompt = f"""You are an expert curriculum designer creating an adaptive learning ontology for artificial intelligence topics.
+        # Create high-level categories that organize the field, not specific techniques
+        depth_guidance = """
+Create HIGH-LEVEL CATEGORIES that organize this field into major conceptual areas, such as:
+- Core fundamentals and theory
+- Key methodologies and approaches
+- Applications and use cases  
+- Analysis and evaluation
+- Advanced topics and research frontiers
 
-Parent Topic: "{parent_topic.name}"
+AVOID overly specific techniques, algorithms, or narrow applications.
+Think like organizing a textbook's main chapters, not individual sections or techniques."""
+
+        prompt = f"""You are subdividing a topic into its fundamental knowledge domains. Your goal is to create a COMPLETE and NON-OVERLAPPING breakdown.
+
+Topic: "{parent_topic.name}"
 Description: "{parent_topic.description}"
-Current Difficulty Range: {parent_topic.difficulty_min}-{parent_topic.difficulty_max}
-User Interest Score: {interest_score:.2f} (0.0 = low, 1.0 = high)
-{interest_context}
 
-{difficulty_guidance}
+CRITICAL REQUIREMENTS:
+1. MUTUALLY EXCLUSIVE: Each subtopic covers a distinct area with NO overlap
+2. COLLECTIVELY EXHAUSTIVE: Together, the subtopics must cover EVERYTHING in the parent topic
+3. KNOWLEDGE-FOCUSED: Generate conceptual divisions and paradigms, NOT methodologies or processes
+4. COMPLETE COVERAGE: A student mastering all {count} subtopics should have comprehensive knowledge of "{parent_topic.name}"
 
-Generate exactly {count} specific, learnable subtopics that:
-1. Are more specific than the parent topic
-2. Can be learned independently but build on the parent concept
-3. Progress from foundational to advanced concepts
-4. Match the user's demonstrated interest level
-5. Are practical and applicable
+THINK: "What are the main types/approaches/domains within this field?" 
+NOT: "What are the steps/methods/techniques for doing this?"
 
-Return ONLY a valid JSON array with this exact structure:
+GOOD EXAMPLES:
+- For "Mathematics": Algebra, Geometry, Calculus, Statistics (knowledge domains)
+- For "Physics": Mechanics, Thermodynamics, Electromagnetism, Quantum Physics (fundamental areas)
+- For "Machine Learning": Supervised Learning, Unsupervised Learning, Reinforcement Learning, Deep Learning (paradigms)
+
+BAD EXAMPLES:
+- For "Mathematics": Problem Solving, Proof Techniques, Calculator Usage (methodologies)
+- For "Physics": Lab Techniques, Measurement Methods, Data Analysis (processes)
+- For "Machine Learning": Feature Engineering, Model Evaluation, Data Preprocessing (methodologies)
+
+Generate {count} subtopics that represent the fundamental knowledge divisions of "{parent_topic.name}".
+
+Return ONLY this JSON:
 [
   {{
-    "name": "Specific Subtopic Name",
-    "description": "Clear, educational description of what this subtopic covers",
-    "difficulty_min": integer (1-10),
-    "difficulty_max": integer (1-10),
-    "learning_objectives": ["objective1", "objective2", "objective3"]
+    "name": "Subdivision Name",
+    "description": "What this subdivision covers",
+    "difficulty_min": {max(1, parent_topic.difficulty_min)},
+    "difficulty_max": {min(10, parent_topic.difficulty_max + 1)},
+    "learning_objectives": ["Learn core concepts", "Understand principles", "Apply knowledge"]
   }}
-]
-
-Important:
-- Topic names should be 3-8 words maximum
-- Descriptions should be 1-2 sentences
-- difficulty_min should be >= parent's difficulty_min
-- difficulty_max should be <= parent's difficulty_max + 2
-- Make topics progressively more challenging
-- Focus on practical, hands-on learning"""
+]"""
 
         return prompt
     
@@ -133,6 +146,16 @@ Important:
                 raise ValueError("No JSON array found in response")
             
             json_str = json_match.group(0)
+            
+            # Clean up unicode quotes and other formatting issues
+            json_str = json_str.replace('"', '"').replace('"', '"')  # Fix curly quotes
+            json_str = json_str.replace(''', "'").replace(''', "'")  # Fix curly apostrophes
+            json_str = json_str.replace('…', '...')  # Fix ellipsis
+            json_str = json_str.replace('—', '-').replace('–', '-')  # Fix dashes
+            json_str = json_str.replace('\u201c', '"').replace('\u201d', '"')  # Unicode quotes
+            json_str = json_str.replace('\u2018', "'").replace('\u2019', "'")  # Unicode apostrophes
+            json_str = json_str.replace('\u2026', '...')  # Unicode ellipsis
+            
             subtopics = json.loads(json_str)
             
             if not isinstance(subtopics, list):

@@ -487,10 +487,16 @@ class AdaptiveQuestionSelector:
         # Ensure options is a valid list
         options = selected_question.options if selected_question.options else []
         
+        # Shuffle options to prevent predictable correct answer positions
+        shuffled_options, shuffled_correct = self._shuffle_question_options(
+            options, selected_question.correct_answer
+        )
+        
         return {
             'question_id': selected_question.id,
             'question': selected_question.content,
-            'options': options,
+            'options': shuffled_options,
+            'correct_answer': shuffled_correct,  # Include shuffled correct answer for frontend
             'difficulty': selected_question.difficulty,
             'topic_id': topic_id,
             'topic_name': topic['name'],
@@ -963,11 +969,17 @@ Make sure the explanation:
             print(f"✅ Successfully created new question {new_question.id} for topic {topic['name']}")
             print(f"📝 Question concepts: {', '.join(proposed_concepts)}")
             
+            # Shuffle options to prevent predictable correct answer positions
+            shuffled_options, shuffled_correct = self._shuffle_question_options(
+                new_question.options, new_question.correct_answer
+            )
+            
             # Return the question data in the expected format
             return {
                 'question_id': new_question.id,
                 'question': new_question.content,
-                'options': new_question.options,
+                'options': shuffled_options,
+                'correct_answer': shuffled_correct,  # Include shuffled correct answer for frontend
                 'difficulty': new_question.difficulty,
                 'topic_id': topic['id'],
                 'topic_name': topic['name'],
@@ -1024,11 +1036,14 @@ Make sure the explanation:
         
         print(f"🔧 Created fallback question for {topic_name} (difficulty {difficulty})")
         
+        # Shuffle options to prevent predictable correct answer positions
+        shuffled_options, shuffled_correct = self._shuffle_question_options(options, correct_answer)
+        
         # Return the question data without trying to save to DB
         # The calling function will handle database operations
         return {
             'question': question_text,
-            'options': options,
+            'options': shuffled_options,
             'difficulty': difficulty,
             'topic_id': topic['id'],
             'topic_name': topic['name'],
@@ -1037,9 +1052,45 @@ Make sure the explanation:
             'topic_interest_score': topic.get('interest_score', 0.5),
             'is_generated': True,
             'is_fallback': True,
-            'correct_answer': correct_answer,
+            'correct_answer': shuffled_correct,
             'explanation': explanation
         }
+    
+    def _shuffle_question_options(self, options: List[str], correct_answer: str) -> tuple[List[str], str]:
+        """Shuffle question options and return new correct answer"""
+        import random
+        
+        # Make a copy to avoid modifying the original
+        shuffled_options = options.copy()
+        
+        # Find the index of the correct answer
+        try:
+            correct_index = shuffled_options.index(correct_answer)
+        except ValueError:
+            # If exact match fails, try case-insensitive search
+            correct_index = None
+            for i, option in enumerate(shuffled_options):
+                if option.strip().lower() == correct_answer.strip().lower():
+                    correct_index = i
+                    break
+            
+            # If still not found, return original (don't shuffle to avoid breaking)
+            if correct_index is None:
+                print(f"Warning: Correct answer '{correct_answer}' not found in options, skipping shuffle")
+                return options, correct_answer
+        
+        # Create a list of indices and shuffle them
+        indices = list(range(len(shuffled_options)))
+        random.shuffle(indices)
+        
+        # Reorder options according to shuffled indices
+        shuffled_options = [options[i] for i in indices]
+        
+        # Find where the correct answer ended up after shuffling
+        new_correct_index = indices.index(correct_index)
+        new_correct_answer = shuffled_options[new_correct_index]
+        
+        return shuffled_options, new_correct_answer
 
 
 # Global instance

@@ -34,7 +34,7 @@ class DynamicOntologyService:
     }
     
     def __init__(self):
-        self.min_questions_for_proficiency = 3  # At least 3 questions to assess understanding
+        self.min_questions_for_proficiency = 5  # Increased to 5 to prevent premature unlocking during quiz
         self.interest_decay_factor = 0.95  # Interest decays over time
         self.topic_generator = DynamicTopicGenerator()
     
@@ -166,7 +166,8 @@ class DynamicOntologyService:
         proficiency_level = self._determine_proficiency_level(accuracy, progress.questions_answered)
         
         # Update mastery level
-        progress.mastery_level = proficiency_level
+        # Legacy field - don't override current_mastery_level
+        # progress.mastery_level = proficiency_level
         
         unlocked_topics = []
         
@@ -181,19 +182,66 @@ class DynamicOntologyService:
             if not current_topic:
                 return []
             
-            # Check if we already have enough subtopics for this topic
+            # First, try to unlock existing subtopics that match the proficiency level
+            existing_subtopics = await self._get_existing_subtopics_for_unlocking(
+                db, user_id, topic_id, proficiency_level
+            )
+            
+            # Unlock appropriate existing subtopics
+            for subtopic in existing_subtopics:
+                # Check if already unlocked
+                existing_unlock = await db.execute(
+                    select(DynamicTopicUnlock).where(
+                        and_(
+                            DynamicTopicUnlock.user_id == user_id,
+                            DynamicTopicUnlock.unlocked_topic_id == subtopic.id
+                        )
+                    )
+                )
+                
+                if not existing_unlock.scalar_one_or_none():
+                    # Create unlock record
+                    unlock = DynamicTopicUnlock(
+                        user_id=user_id,
+                        parent_topic_id=topic_id,
+                        unlocked_topic_id=subtopic.id,
+                        unlock_trigger="proficiency"
+                    )
+                    db.add(unlock)
+                    
+                    # Create progress record for unlocked topic
+                    new_progress = UserSkillProgress(
+                        user_id=user_id,
+                        topic_id=subtopic.id,
+                        is_unlocked=True,
+                        unlocked_at=datetime.utcnow()
+                    )
+                    db.add(new_progress)
+                    
+                    unlocked_topics.append({
+                        "id": subtopic.id,
+                        "name": subtopic.name,
+                        "description": subtopic.description,
+                        "unlock_reason": f"Mastered {proficiency_level} level in parent topic"
+                    })
+            
+            # Only generate new topics if no existing topics were unlocked and we have very few children
             existing_children = await db.execute(
                 select(Topic).where(Topic.parent_id == topic_id)
             )
             existing_count = len(existing_children.scalars().all())
             
-            # Only generate new topics if we have fewer than a reasonable number
-            if existing_count < 10:  # Allow up to 10 subtopics per topic
+            # Only generate new topics if we have NO existing children and didn't unlock any existing ones
+            # This prevents topic generation during active quiz sessions and reduces API calls
+            if existing_count == 0 and len(unlocked_topics) == 0:
+                print(f"🎯 Generating new subtopics for {current_topic.name} (no existing children)")
+                
                 # Get user interests for context
                 user_interests = await self._get_user_interests_for_generation(db, user_id)
                 
-                # For AI root topic, generate all major domains; for others, generate 3-5
-                count = 7 if current_topic.name == "Artificial Intelligence" else 5
+                # Generate 4-6 topics to ensure comprehensive coverage
+                # More topics for broader domains
+                count = 6 if current_topic.name == "Artificial Intelligence" else 5
                 
                 # Dynamically generate new subtopics
                 generated_subtopics = await self.topic_generator.generate_subtopics(
@@ -232,47 +280,93 @@ class DynamicOntologyService:
                         "unlock_reason": f"Generated based on {proficiency_level} proficiency and interests"
                     })
             else:
-                # If we have enough existing topics, just unlock existing ones
-                subtopics_to_unlock = await self._get_existing_subtopics_for_unlocking(
-                    db, user_id, topic_id, proficiency_level
-                )
-                
-                for subtopic in subtopics_to_unlock:
-                    # Check if already unlocked
-                    existing_unlock = await db.execute(
-                        select(DynamicTopicUnlock).where(
-                            and_(
-                                DynamicTopicUnlock.user_id == user_id,
-                                DynamicTopicUnlock.unlocked_topic_id == subtopic.id
-                            )
+                print(f"🔓 Skipping generation for {current_topic.name} - already has {existing_count} children, unlocked {len(unlocked_topics)} existing topics")
+        
+        await db.commit()
+        return unlocked_topics
+    
+    async def check_and_unlock_subtopics_non_blocking(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        topic_id: int
+    ) -> List[Dict]:
+        """Non-blocking version that only unlocks existing topics, doesn't generate new ones"""
+        
+        # Get user's progress on this topic
+        result = await db.execute(
+            select(UserSkillProgress).where(
+                and_(UserSkillProgress.user_id == user_id, UserSkillProgress.topic_id == topic_id)
+            )
+        )
+        progress = result.scalar_one_or_none()
+        
+        if not progress or progress.questions_answered < self.min_questions_for_proficiency:
+            return []
+        
+        # Calculate proficiency
+        accuracy = progress.correct_answers / progress.questions_answered
+        proficiency_level = self._determine_proficiency_level(accuracy, progress.questions_answered)
+        
+        # Update mastery level
+        # Legacy field - don't override current_mastery_level
+        # progress.mastery_level = proficiency_level
+        
+        unlocked_topics = []
+        
+        # Check if proficiency threshold is met for unlocking
+        if accuracy >= self.PROFICIENCY_THRESHOLDS["beginner"] and not progress.proficiency_threshold_met:
+            progress.proficiency_threshold_met = True
+            
+            # Get the current topic for generation context
+            topic_result = await db.execute(select(Topic).where(Topic.id == topic_id))
+            current_topic = topic_result.scalar_one_or_none()
+            
+            if not current_topic:
+                return []
+            
+            # Only try to unlock existing subtopics (no generation)
+            existing_subtopics = await self._get_existing_subtopics_for_unlocking(
+                db, user_id, topic_id, proficiency_level
+            )
+            
+            # Unlock appropriate existing subtopics
+            for subtopic in existing_subtopics:
+                # Check if already unlocked
+                existing_unlock = await db.execute(
+                    select(DynamicTopicUnlock).where(
+                        and_(
+                            DynamicTopicUnlock.user_id == user_id,
+                            DynamicTopicUnlock.unlocked_topic_id == subtopic.id
                         )
                     )
+                )
+                
+                if not existing_unlock.scalar_one_or_none():
+                    # Create unlock record
+                    unlock = DynamicTopicUnlock(
+                        user_id=user_id,
+                        parent_topic_id=topic_id,
+                        unlocked_topic_id=subtopic.id,
+                        unlock_trigger="proficiency"
+                    )
+                    db.add(unlock)
                     
-                    if not existing_unlock.scalar_one_or_none():
-                        # Create unlock record
-                        unlock = DynamicTopicUnlock(
-                            user_id=user_id,
-                            parent_topic_id=topic_id,
-                            unlocked_topic_id=subtopic.id,
-                            unlock_trigger="proficiency"
-                        )
-                        db.add(unlock)
-                        
-                        # Create progress record for unlocked topic
-                        new_progress = UserSkillProgress(
-                            user_id=user_id,
-                            topic_id=subtopic.id,
-                            is_unlocked=True,
-                            unlocked_at=datetime.utcnow()
-                        )
-                        db.add(new_progress)
-                        
-                        unlocked_topics.append({
-                            "id": subtopic.id,
-                            "name": subtopic.name,
-                            "description": subtopic.description,
-                            "unlock_reason": f"Mastered {proficiency_level} level in parent topic"
-                        })
+                    # Create progress record for unlocked topic
+                    new_progress = UserSkillProgress(
+                        user_id=user_id,
+                        topic_id=subtopic.id,
+                        is_unlocked=True,
+                        unlocked_at=datetime.utcnow()
+                    )
+                    db.add(new_progress)
+                    
+                    unlocked_topics.append({
+                        "id": subtopic.id,
+                        "name": subtopic.name,
+                        "description": subtopic.description,
+                        "unlock_reason": f"Mastered {proficiency_level} level in parent topic"
+                    })
         
         await db.commit()
         return unlocked_topics

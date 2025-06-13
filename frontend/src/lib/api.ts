@@ -155,6 +155,17 @@ class ApiService {
   async getLearningSuggestions(userId: number = 1, limit: number = 5): Promise<any> {
     return this.request(`/topics/suggestions?user_id=${userId}&limit=${limit}`);
   }
+
+  async increaseTopicInterest(topicId: number, userId: number = 1): Promise<any> {
+    return this.request('/topics/increase-interest', {
+      method: 'POST',
+      body: JSON.stringify({
+        topic_id: topicId,
+        user_id: userId,
+        action: 'start_learning'
+      }),
+    });
+  }
 }
 
 export const apiService = new ApiService();

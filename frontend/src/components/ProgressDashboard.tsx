@@ -5,6 +5,7 @@ import { apiService } from '@/lib/api';
 
 interface ProgressDashboardProps {
   onBack: () => void;
+  onStartLearning?: (sessionId: number, topicId: number) => void;
 }
 
 interface TopicNode {
@@ -31,10 +32,11 @@ interface UserProgress {
   topics: TopicNode[];
 }
 
-export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
+export function ProgressDashboard({ onBack, onStartLearning }: ProgressDashboardProps) {
   const [progress, setProgress] = useState<UserProgress | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedNode, setSelectedNode] = useState<TopicNode | null>(null);
+  const [hoveredNode, setHoveredNode] = useState<TopicNode | null>(null);
   const [viewMode, setViewMode] = useState<'tree' | 'stats'>('tree');
   const svgRef = useRef<SVGSVGElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
@@ -42,6 +44,8 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [expandedNodes, setExpandedNodes] = useState<Set<number>>(new Set());
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filteredNodes, setFilteredNodes] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     fetchProgress();
@@ -59,12 +63,8 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
     handleResize();
     window.addEventListener('resize', handleResize);
     
-    // Set up periodic refresh to catch new topics
-    const refreshInterval = setInterval(fetchProgress, 30000); // Refresh every 30 seconds
-    
     return () => {
       window.removeEventListener('resize', handleResize);
-      clearInterval(refreshInterval);
     };
   }, []);
 
@@ -94,13 +94,10 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
         }
       });
       
-      // Initialize expanded nodes first - expand root and its children by default
+      // Initialize expanded nodes first - only expand root by default
       if (roots.length > 0) {
         const initialExpanded = new Set<number>();
         initialExpanded.add(roots[0].id);
-        roots[0].children?.forEach(child => {
-          initialExpanded.add(child.id);
-        });
         setExpandedNodes(initialExpanded);
         
         // Calculate positions for tree layout with proper expanded state
@@ -166,46 +163,122 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
     setSelectedNode(node);
   };
 
-  const toggleNodeExpansion = (nodeId: number) => {
-    const newExpanded = new Set(expandedNodes);
-    if (newExpanded.has(nodeId)) {
-      newExpanded.delete(nodeId);
-    } else {
-      newExpanded.add(nodeId);
+  const searchNodes = useCallback((term: string) => {
+    if (!term.trim()) {
+      setFilteredNodes(new Set());
+      return;
     }
-    setExpandedNodes(newExpanded);
+
+    const searchLower = term.toLowerCase();
+    const matchingNodes = new Set<number>();
     
-    // Recalculate layout with new expansion state
-    if (progress?.topics && progress.topics.length > 0) {
-      const rootNode = progress.topics[0];
-      if (rootNode) {
-        calculateTreeLayout(rootNode, dimensions.width / 2, 100, dimensions.width / 4, 0, newExpanded);
-        setProgress({ ...progress });
+    const searchInNode = (node: TopicNode) => {
+      if (node.name.toLowerCase().includes(searchLower)) {
+        matchingNodes.add(node.id);
       }
-    }
+      node.children?.forEach(searchInNode);
+    };
+
+    progress?.topics.forEach(searchInNode);
+    setFilteredNodes(matchingNodes);
+  }, [progress]);
+
+  useEffect(() => {
+    searchNodes(searchTerm);
+  }, [searchTerm, searchNodes]);
+
+  const expandPathToNode = (targetNodeId: number) => {
+    const pathNodes = new Set<number>();
+    
+    const findPath = (node: TopicNode, targetId: number, path: number[]): boolean => {
+      path.push(node.id);
+      
+      if (node.id === targetId) {
+        // Found target, add all nodes in path to expanded
+        path.forEach(id => pathNodes.add(id));
+        return true;
+      }
+      
+      if (node.children) {
+        for (const child of node.children) {
+          if (findPath(child, targetId, [...path])) {
+            path.forEach(id => pathNodes.add(id));
+            return true;
+          }
+        }
+      }
+      
+      return false;
+    };
+
+    progress?.topics.forEach(root => {
+      findPath(root, targetNodeId, []);
+    });
+
+    setExpandedNodes(prev => new Set([...prev, ...pathNodes]));
+  };
+
+  const toggleNodeExpansion = (nodeId: number) => {
+    setExpandedNodes(prev => {
+      const newExpanded = new Set(prev);
+      if (newExpanded.has(nodeId)) {
+        newExpanded.delete(nodeId);
+      } else {
+        newExpanded.add(nodeId);
+      }
+      
+      // Recalculate layout with new expansion state
+      if (progress?.topics && progress.topics.length > 0) {
+        const rootNode = progress.topics[0];
+        if (rootNode) {
+          calculateTreeLayout(rootNode, dimensions.width / 2, 100, dimensions.width / 4, 0, newExpanded);
+        }
+      }
+      
+      return newExpanded;
+    });
   };
 
   const handleStartLearning = async (node: TopicNode) => {
     try {
-      // First, navigate to the topic to ensure it's unlocked and set interest
+      setLoading(true);
+      
+      // Step 1: Increase user interest in this topic
+      console.log(`🎯 Increasing interest for topic: ${node.name}`);
+      await apiService.increaseTopicInterest(node.id, 1);
+      
+      // Step 2: Navigate to the topic to ensure it's unlocked
       await apiService.navigateToTopic(node.id, 1);
       
-      // Then navigate back to adaptive learning - the parent component should handle this
-      // For now, we'll just show a success message
-      alert(`Ready to learn ${node.name}! You can now go back to the main learning page.`);
+      // Step 3: Start a quiz session for this specific topic
+      console.log(`🚀 Starting quiz session for topic: ${node.name}`);
+      const quizSession = await apiService.startQuiz(node.id, 1);
+      
+      console.log(`✅ Quiz session started:`, quizSession);
+      
+      // Step 4: Navigate back to learning view with the active session
+      if (onStartLearning && quizSession.session_id) {
+        onStartLearning(quizSession.session_id, node.id);
+      } else {
+        // Fallback: just go back to learning page
+        onBack();
+      }
       
     } catch (error) {
-      console.error('Failed to start learning topic:', error);
-      alert('Unable to start learning this topic. Please try again.');
+      console.error('Failed to start learning session:', error);
+      alert(`Unable to start learning "${node.name}". Please try again.`);
+    } finally {
+      setLoading(false);
     }
   };
 
   const getNodeColor = (node: TopicNode) => {
     if (!node.is_unlocked) return '#94a3b8'; // gray for locked
-    if (node.accuracy >= 0.8) return '#10b981'; // green for mastered
-    if (node.accuracy >= 0.6) return '#3b82f6'; // blue for learning
-    if (node.accuracy >= 0.4) return '#f59e0b'; // yellow for struggling
-    return '#ef4444'; // red for needs work
+    if (node.mastery_level === 'master') return '#a855f7'; // purple for master
+    if (node.mastery_level === 'expert') return '#f97316'; // orange for expert
+    if (node.mastery_level === 'proficient') return '#10b981'; // green for proficient
+    if (node.mastery_level === 'competent') return '#3b82f6'; // blue for competent
+    return '#6b7280'; // gray for novice
   };
 
   const isUserGeneratedTopic = (node: TopicNode) => {
@@ -230,9 +303,12 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
 
     const color = getNodeColor(node);
     const isSelected = selectedNode?.id === node.id;
+    const isHovered = hoveredNode?.id === node.id;
     const isUserGenerated = isUserGeneratedTopic(node);
     const isExpanded = expandedNodes.has(node.id);
     const hasChildren = node.children && node.children.length > 0;
+    const isSearchMatch = filteredNodes.has(node.id);
+    const isSearchActive = searchTerm.trim().length > 0;
     
     return (
       <g key={node.id}>
@@ -259,13 +335,31 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
         <circle
           cx={node.x}
           cy={node.y}
-          r={isSelected ? 25 : 20}
+          r={isSelected ? 25 : isHovered ? 22 : 20}
           fill={color}
-          stroke={isSelected ? '#1f2937' : isUserGenerated ? '#f59e0b' : 'white'}
-          strokeWidth={isSelected ? 3 : isUserGenerated ? 2 : 1.5}
+          stroke={
+            isSelected ? '#1f2937' : 
+            isSearchMatch ? '#ef4444' :
+            isHovered ? '#3b82f6' : 
+            isUserGenerated ? '#f59e0b' : 
+            'white'
+          }
+          strokeWidth={
+            isSelected ? 3 : 
+            isSearchMatch ? 3 :
+            isHovered ? 2.5 : 
+            isUserGenerated ? 2 : 
+            1.5
+          }
           strokeDasharray={isUserGenerated ? '5,5' : 'none'}
-          style={{ cursor: 'pointer', transition: 'all 0.2s' }}
+          style={{ 
+            cursor: 'pointer', 
+            transition: 'all 0.2s',
+            opacity: isSearchActive && !isSearchMatch ? 0.4 : 1
+          }}
           onClick={() => handleNodeClick(node)}
+          onMouseEnter={() => setHoveredNode(node)}
+          onMouseLeave={() => setHoveredNode(null)}
         />
         
         {/* User-generated topic indicator */}
@@ -297,10 +391,13 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
           x={node.x}
           y={node.y! + 40}
           textAnchor="middle"
-          className="text-xs font-medium fill-gray-900 dark:fill-gray-100"
+          className={`text-xs font-medium fill-gray-900 dark:fill-gray-100 ${isHovered ? 'font-bold' : ''}`}
           style={{ pointerEvents: 'none' }}
         >
-          {node.name.length > 15 ? node.name.substring(0, 15) + '...' : node.name}
+          {isHovered && node.name.length > 15 
+            ? (node.name.length > 25 ? node.name.substring(0, 25) + '...' : node.name)
+            : (node.name.length > 15 ? node.name.substring(0, 15) + '...' : node.name)
+          }
         </text>
         
         {/* Progress indicator */}
@@ -342,14 +439,14 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
               cy={node.y! + 28}
               r="8"
               fill="white"
-              stroke="#6b7280"
-              strokeWidth="1.5"
+              stroke={isHovered ? "#3b82f6" : "#6b7280"}
+              strokeWidth={isHovered ? "2" : "1.5"}
             />
             <text
               x={node.x}
               y={node.y! + 32}
               textAnchor="middle"
-              className="text-xs font-bold fill-gray-700 dark:fill-gray-600"
+              className={`text-xs font-bold ${isHovered ? 'fill-blue-600' : 'fill-gray-700 dark:fill-gray-600'}`}
               style={{ pointerEvents: 'none', fontSize: '10px' }}
             >
               {isExpanded ? '−' : '+'}
@@ -462,13 +559,14 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
           <div className="flex-1 p-6">
             {viewMode === 'tree' ? (
               <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4" style={{ height: '600px' }}>
-                <div className="mb-4 flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                    🌳 Your Knowledge Tree
-                  </h3>
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <button
+                <div className="mb-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                      🌳 Your Knowledge Tree
+                    </h3>
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <button
                         onClick={() => {
                           // Expand all nodes
                           const allNodeIds = new Set<number>();
@@ -479,10 +577,10 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
                           progress?.topics.forEach(collectNodeIds);
                           setExpandedNodes(allNodeIds);
                           
-                          // Recalculate layout
+                          // Recalculate layout with the new expanded state
                           if (progress?.topics && progress.topics.length > 0) {
-                            calculateTreeLayout(progress.topics[0], dimensions.width / 2, 100, dimensions.width / 4);
-                            setProgress({ ...progress });
+                            calculateTreeLayout(progress.topics[0], dimensions.width / 2, 100, dimensions.width / 4, 0, allNodeIds);
+                            setProgress(prev => prev ? { ...prev } : null);
                           }
                         }}
                         className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
@@ -491,32 +589,59 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
                       </button>
                       <button
                         onClick={() => {
-                          // Collapse all except root and its children
+                          // Collapse all except root only
                           const newExpanded = new Set<number>();
                           if (progress?.topics && progress.topics.length > 0) {
                             newExpanded.add(progress.topics[0].id);
-                            progress.topics[0].children?.forEach(child => {
-                              newExpanded.add(child.id);
-                            });
                           }
                           setExpandedNodes(newExpanded);
                           
-                          // Recalculate layout
+                          // Recalculate layout with the new expanded state
                           if (progress?.topics && progress.topics.length > 0) {
-                            calculateTreeLayout(progress.topics[0], dimensions.width / 2, 100, dimensions.width / 4);
-                            setProgress({ ...progress });
+                            calculateTreeLayout(progress.topics[0], dimensions.width / 2, 100, dimensions.width / 4, 0, newExpanded);
+                            setProgress(prev => prev ? { ...prev } : null);
                           }
                         }}
                         className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
                       >
                         Collapse All
                       </button>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                       <span>🖱️ Drag to pan</span>
                       <span>🔍 Scroll to zoom</span>
                     </div>
                   </div>
+                </div>
+                
+                {/* Search Bar */}
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      placeholder="Search topics..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full px-3 py-2 pl-8 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <div className="absolute left-2.5 top-2.5 text-gray-400">
+                      🔍
+                    </div>
+                  </div>
+                  {searchTerm && (
+                    <button
+                      onClick={() => setSearchTerm('')}
+                      className="px-2 py-2 text-sm bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600"
+                    >
+                      Clear
+                    </button>
+                  )}
+                  {filteredNodes.size > 0 && (
+                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                      {filteredNodes.size} match{filteredNodes.size === 1 ? '' : 'es'}
+                    </div>
+                  )}
                 </div>
                 
                 <div className="relative overflow-hidden bg-gray-50 dark:bg-gray-700 rounded-lg" style={{ height: '500px' }}>
@@ -535,38 +660,70 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
                       {progress?.topics.map(topic => renderNode(topic))}
                     </g>
                   </svg>
+                  
+                  {/* Hover tooltip */}
+                  {hoveredNode && (
+                    <div
+                      className="absolute pointer-events-none bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 px-3 py-2 rounded-lg shadow-lg text-sm max-w-xs z-10"
+                      style={{
+                        left: `${(hoveredNode.x! * transform.scale) + transform.x + 30}px`,
+                        top: `${(hoveredNode.y! * transform.scale) + transform.y - 10}px`,
+                      }}
+                    >
+                      <div className="font-semibold">{hoveredNode.name}</div>
+                      {hoveredNode.is_unlocked && (
+                        <div className="text-xs opacity-75 mt-1">
+                          {hoveredNode.questions_answered > 0 ? (
+                            <>
+                              {Math.round(hoveredNode.accuracy * 100)}% accuracy
+                              <span className="mx-1">•</span>
+                              {hoveredNode.questions_answered} questions
+                            </>
+                          ) : (
+                            'No questions answered yet'
+                          )}
+                        </div>
+                      )}
+                      {!hoveredNode.is_unlocked && (
+                        <div className="text-xs opacity-75 mt-1">🔒 Locked</div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Legend */}
                 <div className="mt-4 space-y-2">
-                  <div className="flex items-center justify-center gap-6 text-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded-full bg-green-500"></div>
-                      <span className="text-gray-600 dark:text-gray-400">Mastered (80%+)</span>
+                  <div className="flex items-center justify-center gap-4 text-xs flex-wrap">
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded-full bg-purple-500"></div>
+                      <span className="text-gray-600 dark:text-gray-400">Master</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded-full bg-blue-500"></div>
-                      <span className="text-gray-600 dark:text-gray-400">Learning (60%+)</span>
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded-full bg-orange-500"></div>
+                      <span className="text-gray-600 dark:text-gray-400">Expert</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded-full bg-yellow-500"></div>
-                      <span className="text-gray-600 dark:text-gray-400">Struggling (40%+)</span>
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                      <span className="text-gray-600 dark:text-gray-400">Proficient</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded-full bg-gray-400"></div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                      <span className="text-gray-600 dark:text-gray-400">Competent</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded-full bg-gray-500"></div>
+                      <span className="text-gray-600 dark:text-gray-400">Novice</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded-full bg-gray-300"></div>
                       <span className="text-gray-600 dark:text-gray-400">Locked</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="relative">
-                        <div className="w-4 h-4 rounded-full bg-blue-500 border-2 border-yellow-500" style={{borderStyle: 'dashed'}}></div>
-                        <div className="absolute -top-1 -right-1 text-xs">✨</div>
-                      </div>
-                      <span className="text-gray-600 dark:text-gray-400">Your Request</span>
                     </div>
                   </div>
                   <div className="flex items-center justify-center gap-4 text-xs text-gray-500 dark:text-gray-500">
                     <span>💡 Click + to expand branches</span>
                     <span>👆 Click node to see details</span>
+                    <span>🖱️ Hover to see full name</span>
+                    <span>🔍 Search highlights matches in red</span>
                   </div>
                 </div>
               </div>
@@ -708,15 +865,17 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
                       <div className="text-sm">
                         <span className="text-gray-600 dark:text-gray-400">Status: </span>
                         <span className={`font-medium ${
-                          selectedNode.accuracy >= 0.8 ? 'text-green-600' :
-                          selectedNode.accuracy >= 0.6 ? 'text-blue-600' :
-                          selectedNode.accuracy >= 0.4 ? 'text-yellow-600' :
-                          'text-red-600'
+                          selectedNode.mastery_level === 'master' ? 'text-purple-600' :
+                          selectedNode.mastery_level === 'expert' ? 'text-orange-600' :
+                          selectedNode.mastery_level === 'proficient' ? 'text-green-600' :
+                          selectedNode.mastery_level === 'competent' ? 'text-blue-600' :
+                          'text-gray-600'
                         }`}>
-                          {selectedNode.accuracy >= 0.8 ? 'Mastered' :
-                           selectedNode.accuracy >= 0.6 ? 'Learning' :
-                           selectedNode.accuracy >= 0.4 ? 'Needs Practice' :
-                           'Just Started'}
+                          {selectedNode.mastery_level === 'master' ? 'Master Level' :
+                           selectedNode.mastery_level === 'expert' ? 'Expert Level' :
+                           selectedNode.mastery_level === 'proficient' ? 'Proficient' :
+                           selectedNode.mastery_level === 'competent' ? 'Competent' :
+                           'Novice Level'}
                         </span>
                       </div>
                     </div>

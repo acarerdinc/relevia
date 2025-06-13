@@ -38,6 +38,7 @@ interface Question {
   difficulty: number;
   topic_name: string;
   selection_strategy: string;
+  mastery_level?: string;
   session_progress?: {
     questions_answered: number;
     session_accuracy: number;
@@ -71,9 +72,12 @@ interface Question {
 
 interface AdaptiveLearningProps {
   onViewChange: (view: string) => void;
+  startSession?: {sessionId: number, topicId: number} | null;
+  onSessionUsed?: () => void;
+  onTopicsUnlocked?: () => void;
 }
 
-export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
+export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, onTopicsUnlocked }: AdaptiveLearningProps) {
   const [dashboard, setDashboard] = useState<LearningDashboard | null>(null);
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
   const [sessionId, setSessionId] = useState<number | null>(null);
@@ -83,10 +87,28 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
   const [questionCount, setQuestionCount] = useState(0);
   const [topicCreationResult, setTopicCreationResult] = useState<any>(null);
   const [showTopicCreationFeedback, setShowTopicCreationFeedback] = useState(false);
+  const [isFocusedSession, setIsFocusedSession] = useState(false);
 
   useEffect(() => {
     loadDashboard();
   }, []);
+
+  // Handle starting a session passed from ProgressDashboard
+  useEffect(() => {
+    if (startSession && !sessionId) {
+      console.log('🎯 Starting session from ProgressDashboard:', startSession);
+      setSessionId(startSession.sessionId);
+      setIsFocusedSession(true); // Mark this as a focused session
+      
+      // Get the first question for this session (focused session)
+      getNextQuestion(startSession.sessionId, true);
+      
+      // Clear the startSession from parent to prevent re-triggering
+      if (onSessionUsed) {
+        onSessionUsed();
+      }
+    }
+  }, [startSession, sessionId, onSessionUsed]);
 
   const loadDashboard = async () => {
     try {
@@ -160,6 +182,7 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
 
   const startLearning = async () => {
     setIsLoading(true);
+    setIsFocusedSession(false); // This is adaptive learning, not focused
     try {
       const response = await fetch('http://localhost:8000/api/v1/adaptive/continue/1');
       const data = await response.json();
@@ -170,7 +193,7 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
         setQuestionCount(1);
       } else if (data.session_id) {
         setSessionId(data.session_id);
-        await getNextQuestion(data.session_id);
+        await getNextQuestion(data.session_id, false); // Explicitly use adaptive endpoint
       }
     } catch (error) {
       console.error('Failed to start learning:', error);
@@ -182,9 +205,14 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
   };
 
 
-  const getNextQuestion = async (sessionId: number) => {
+  const getNextQuestion = async (sessionId: number, isFocusedSession: boolean = false) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/adaptive/question/${sessionId}`);
+      // Use focused quiz endpoint if this is a session started from ProgressDashboard
+      const endpoint = isFocusedSession 
+        ? `http://localhost:8000/api/v1/quiz/question/${sessionId}`
+        : `http://localhost:8000/api/v1/adaptive/question/${sessionId}`;
+      
+      const response = await fetch(endpoint);
       
       if (!response.ok) {
         setCurrentQuestion(null);
@@ -219,11 +247,15 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
 
     setIsLoading(true);
     try {
-      // Use adaptive endpoint if available, otherwise traditional
-      const isAdaptive = currentQuestion.selection_strategy !== 'traditional';
-      const endpoint = isAdaptive 
-        ? 'http://localhost:8000/api/v1/adaptive/answer'
-        : 'http://localhost:8000/api/v1/quiz/answer';
+      // Determine endpoint based on selection strategy
+      const isFocused = currentQuestion.selection_strategy === 'focused';
+      const isAdaptive = currentQuestion.selection_strategy !== 'traditional' && !isFocused;
+      
+      const endpoint = isFocused 
+        ? 'http://localhost:8000/api/v1/quiz/answer'
+        : isAdaptive 
+          ? 'http://localhost:8000/api/v1/adaptive/answer'
+          : 'http://localhost:8000/api/v1/quiz/answer';
       
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -246,6 +278,10 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
       // Refresh dashboard if topics were unlocked
       if (result.unlocked_topics?.length > 0) {
         setTimeout(() => loadDashboard(), 1000);
+        // Notify parent component to refresh tree view
+        if (onTopicsUnlocked) {
+          onTopicsUnlocked();
+        }
       }
 
     } catch (error) {
@@ -387,6 +423,49 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
                 <p className="leading-relaxed">{feedback.explanation}</p>
               </div>
               
+              {/* Mastery Progress Info */}
+              {feedback?.mastery_advancement && (
+                <div className="mb-4 p-4 rounded-lg bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 border border-purple-200 dark:border-purple-800">
+                  <div className="text-center">
+                    <span className="text-sm font-medium text-purple-800 dark:text-purple-200">
+                      Mastery Progress
+                    </span>
+                    <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
+                      {feedback.mastery_advancement.questions_at_level} question{feedback.mastery_advancement.questions_at_level !== 1 ? 's' : ''} answered at {feedback.mastery_advancement.current_level} level
+                    </p>
+                    {!feedback.mastery_advancement.advanced && feedback.mastery_advancement.questions_needed > 0 && (
+                      <p className="text-xs text-purple-600 dark:text-purple-400">
+                        {feedback.mastery_advancement.questions_needed} more correct answers needed for {(() => {
+                          const currentLevel = feedback.mastery_advancement.current_level.toLowerCase();
+                          const nextLevel = {
+                            'novice': 'Competent',
+                            'competent': 'Proficient', 
+                            'proficient': 'Expert',
+                            'expert': 'Master'
+                          };
+                          return nextLevel[currentLevel] || 'next';
+                        })()} level
+                      </p>
+                    )}
+                    {!feedback.mastery_advancement.advanced && feedback.mastery_advancement.questions_needed === 0 && feedback.mastery_advancement.current_level !== 'master' && (
+                      <p className="text-xs text-green-600 dark:text-green-400">
+                        ✨ Ready to advance! Keep answering correctly to level up!
+                      </p>
+                    )}
+                    {feedback.mastery_advancement.advanced && (
+                      <div className="mt-2">
+                        <span className="text-sm font-bold text-green-600 dark:text-green-400">
+                          🎉 Level Up!
+                        </span>
+                        <p className="text-xs text-green-600 dark:text-green-400">
+                          {feedback.mastery_advancement.old_level} → {feedback.mastery_advancement.new_level}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {feedback.unlocked_topics?.length > 0 && (
                 <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4 mb-4">
                   <h4 className="font-semibold text-green-800 dark:text-green-200 mb-2">
@@ -405,7 +484,7 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
                   setShowFeedback(false);
                   setIsLoading(true);
                   if (sessionId) {
-                    getNextQuestion(sessionId);
+                    getNextQuestion(sessionId, isFocusedSession);
                   }
                 }}
                 className="mt-6 px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
@@ -421,13 +500,13 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
               
               <div className="space-y-3 mb-6">
                 {(currentQuestion.options || []).map((option, index) => {
-                  // Clean option text by removing any existing letter prefixes (A., B., etc.)
-                  const cleanOption = option.replace(/^[A-Z]\.\s*/, '');
+                  // Clean option text by removing any existing letter prefixes (A., B., etc.) and parentheses
+                  const cleanOption = option.replace(/^[A-Z]\.?\s*[A-Z]\)\s*/, '').replace(/^[A-Z]\.\s*/, '').replace(/^[A-Z]\)\s*/, '');
                   
                   return (
                     <button
                       key={index}
-                      onClick={() => submitAnswer(option, 'answer')}
+                      onClick={() => submitAnswer(index, 'answer')}
                       disabled={isLoading}
                       className="w-full text-left p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 dark:hover:border-blue-600 transition-colors disabled:opacity-50"
                     >
@@ -462,19 +541,157 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
           )}
         </div>
 
-        {/* Topic Progress Bars - Bottom */}
+        {/* Topic Progress with Mastery Levels - Bottom */}
         {currentQuestion.topic_progress && (
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mt-6">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
               📊 Current Topic Progress
             </h3>
             
+            {/* Mastery Level Display */}
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Mastery Journey
+                </span>
+                <span className="text-sm text-gray-600 dark:text-gray-400">
+                  {currentQuestion.mastery_level ? currentQuestion.mastery_level.charAt(0).toUpperCase() + currentQuestion.mastery_level.slice(1) : 'Novice'}
+                </span>
+              </div>
+              
+              {/* Mastery Level Progress Bar */}
+              <div className="relative">
+                {/* Progress Line - Behind the circles */}
+                <div className="absolute top-4 left-0 right-0 h-0.5 bg-gray-200 dark:bg-gray-700 z-0" style={{ width: '100%' }}>
+                  <div 
+                    className="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-red-500 transition-all duration-500"
+                    style={{ 
+                      width: `${
+                        (currentQuestion.mastery_level || 'novice').toLowerCase() === 'novice' ? '10%' :
+                        (currentQuestion.mastery_level || 'novice').toLowerCase() === 'competent' ? '30%' :
+                        (currentQuestion.mastery_level || 'novice').toLowerCase() === 'proficient' ? '50%' :
+                        (currentQuestion.mastery_level || 'novice').toLowerCase() === 'expert' ? '70%' :
+                        '90%'
+                      }` 
+                    }}
+                  ></div>
+                </div>
+                
+                {/* Level Circles - In front */}
+                <div className="flex justify-between mb-2 relative z-10">
+                  {['Novice', 'Competent', 'Proficient', 'Expert', 'Master'].map((level, index) => (
+                    <div key={level} className="flex flex-col items-center relative" style={{ width: '20%' }}>
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 relative z-10 ${
+                        index === 0 ? 'bg-blue-500 text-white' :
+                        index === 1 ? 'bg-green-500 text-white' :
+                        index === 2 ? 'bg-purple-500 text-white' :
+                        index === 3 ? 'bg-orange-500 text-white' :
+                        'bg-red-500 text-white'
+                      } ${
+                        // Highlight current level
+                        (currentQuestion.mastery_level || 'novice').toLowerCase() === level.toLowerCase()
+                          ? 'ring-4 ring-opacity-30 ring-current scale-110'
+                          : ''
+                      }`}>
+                        {index === 0 ? '🌱' :
+                         index === 1 ? '📚' :
+                         index === 2 ? '🎯' :
+                         index === 3 ? '🚀' :
+                         '👑'}
+                      </div>
+                      <span className={`text-xs mt-1 ${
+                        (currentQuestion.mastery_level || 'novice').toLowerCase() === level.toLowerCase()
+                          ? 'font-bold text-gray-900 dark:text-white'
+                          : 'text-gray-500 dark:text-gray-400'
+                      }`}>
+                        {level}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Mastery Progress Info */}
+              <div className="mt-4 p-3 rounded-lg bg-gradient-to-r from-blue-50 to-green-50 dark:from-blue-900/20 dark:to-green-900/20 border border-blue-200 dark:border-blue-800">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                      Progress to Next Level
+                    </span>
+                    {currentQuestion.mastery_level && currentQuestion.mastery_level.toLowerCase() !== 'master' && (
+                      <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                        {(() => {
+                          const currentLevel = (currentQuestion.mastery_level || 'novice').toLowerCase();
+                          const questionsNeeded = {
+                            'novice': 8,      // Need 8 questions to reach Competent
+                            'competent': 12,  // Need 12 questions to reach Proficient  
+                            'proficient': 15, // Need 15 questions to reach Expert
+                            'expert': 20      // Need 20 questions to reach Master
+                          };
+                          const nextLevel = {
+                            'novice': 'Competent',
+                            'competent': 'Proficient', 
+                            'proficient': 'Expert',
+                            'expert': 'Master'
+                          };
+                          
+                          // Use data from latest feedback if available, otherwise calculate
+                          if (feedback?.mastery_advancement?.questions_needed !== undefined) {
+                            return `${feedback.mastery_advancement.questions_needed} more correct answers needed to reach ${nextLevel[currentLevel]} level`;
+                          }
+                          
+                          // Fallback calculation
+                          const questionsAnswered = currentQuestion.session_progress?.questions_answered || 0;
+                          const remaining = Math.max(0, questionsNeeded[currentLevel] - questionsAnswered);
+                          
+                          return `${remaining} more correct answers needed to reach ${nextLevel[currentLevel]} level`;
+                        })()}
+                      </p>
+                    )}
+                    {currentQuestion.mastery_level && currentQuestion.mastery_level.toLowerCase() === 'master' && (
+                      <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                        🎉 You've achieved Master level!
+                      </p>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <span className="text-sm font-bold text-blue-600 dark:text-blue-400">
+                      {(() => {
+                        const currentLevel = (currentQuestion.mastery_level || 'novice').toLowerCase();
+                        if (currentLevel === 'master') return '100%';
+                        
+                        const questionsNeeded = {
+                          'novice': 8,
+                          'competent': 12, 
+                          'proficient': 15,
+                          'expert': 20
+                        };
+                        
+                        // Use backend data if available
+                        if (feedback?.mastery_advancement) {
+                          const questionsAtLevel = feedback.mastery_advancement.questions_at_level || 0;
+                          const required = questionsNeeded[currentLevel];
+                          const progress = Math.min(100, (questionsAtLevel / required) * 100);
+                          return `${Math.round(progress)}%`;
+                        }
+                        
+                        // Fallback calculation
+                        const questionsAnswered = currentQuestion.session_progress?.questions_answered || 0;
+                        const progress = Math.min(100, (questionsAnswered / questionsNeeded[currentLevel]) * 100);
+                        return `${Math.round(progress)}%`;
+                      })()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Proficiency Progress */}
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Proficiency
+                    Accuracy
                   </span>
                   <span className="text-sm text-gray-600 dark:text-gray-400">
                     {formatPercentage(currentQuestion.topic_progress.proficiency.current_accuracy)}% 
@@ -526,11 +743,42 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
               </div>
             </div>
 
+            {/* Mastery Progress Info */}
+            {feedback?.mastery_advancement && (
+              <div className="mt-4 p-4 rounded-lg bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 border border-purple-200 dark:border-purple-800">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-sm font-medium text-purple-800 dark:text-purple-200">
+                      Mastery Progress
+                    </span>
+                    <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
+                      {feedback.mastery_advancement.questions_at_level} question{feedback.mastery_advancement.questions_at_level !== 1 ? 's' : ''} answered at {feedback.mastery_advancement.current_level} level
+                    </p>
+                    {!feedback.mastery_advancement.advanced && feedback.mastery_advancement.questions_needed && (
+                      <p className="text-xs text-purple-600 dark:text-purple-400">
+                        {feedback.mastery_advancement.questions_needed} more questions needed for next level
+                      </p>
+                    )}
+                  </div>
+                  {feedback.mastery_advancement.advanced && (
+                    <div className="text-right">
+                      <span className="text-sm font-bold text-green-600 dark:text-green-400">
+                        🎉 Level Up!
+                      </span>
+                      <p className="text-xs text-green-600 dark:text-green-400">
+                        {feedback.mastery_advancement.old_level} → {feedback.mastery_advancement.new_level}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Unlock Status */}
             <div className="mt-4 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  🔓 Unlock Progress
+                  🔓 Tree Navigation
                 </span>
                 <span className={`text-sm font-semibold ${
                   currentQuestion.topic_progress.unlock.ready 
@@ -554,13 +802,13 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
               
               {currentQuestion.topic_progress.unlock.ready && (
                 <div className="text-sm text-green-600 dark:text-green-400">
-                  ✨ New subtopics will unlock after this question!
+                  ✨ Reach Competent level to explore deeper in the knowledge tree!
                 </div>
               )}
               
               {currentQuestion.topic_progress.unlock.has_subtopics && (
                 <div className="text-sm text-blue-600 dark:text-blue-400">
-                  🎯 System is exploring specialized subtopics based on your progress!
+                  🎯 Keep mastering this level to unlock advanced topics!
                 </div>
               )}
             </div>

@@ -55,6 +55,7 @@ class Question(Base):
     correct_answer = Column(Text, nullable=False)
     explanation = Column(Text)
     difficulty = Column(Integer, nullable=False)
+    mastery_level = Column(String, default="novice")  # novice, competent, proficient, expert, master
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Relationships
@@ -72,6 +73,7 @@ class QuizSession(Base):
     total_questions = Column(Integer, default=0)
     correct_answers = Column(Integer, default=0)
     session_type = Column(String, default="topic_focused")  # "topic_focused" or "adaptive"
+    mastery_level = Column(String, default="novice")  # Target mastery level for this session
     
     # Relationships
     user = relationship("User", back_populates="quiz_sessions")
@@ -104,7 +106,9 @@ class UserSkillProgress(Base):
     confidence = Column(Float, default=0.5)  # 0-1
     questions_answered = Column(Integer, default=0)
     correct_answers = Column(Integer, default=0)
-    mastery_level = Column(String, default="novice")  # novice, beginner, intermediate, advanced, expert
+    mastery_level = Column(String, default="novice")  # novice, competent, proficient, expert, master
+    current_mastery_level = Column(String, default="novice")
+    mastery_questions_answered = Column(JSON, default={"novice": 0, "competent": 0, "proficient": 0, "expert": 0, "master": 0})
     is_unlocked = Column(Boolean, default=True)  # Whether user can access this topic
     unlocked_at = Column(DateTime(timezone=True))
     proficiency_threshold_met = Column(Boolean, default=False)  # For unlocking subtopics

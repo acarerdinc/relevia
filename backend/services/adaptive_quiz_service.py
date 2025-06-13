@@ -156,12 +156,33 @@ class AdaptiveQuizService:
         is_correct = None
         feedback_message = ""
         
-        if action == "answer" and user_answer:
-            is_correct = user_answer.strip().lower() == question.correct_answer.strip().lower()
+        if action == "answer" and user_answer is not None:
+            # Handle both index-based and text-based answers
+            if isinstance(user_answer, int) or (isinstance(user_answer, str) and user_answer.isdigit()):
+                # Index-based answer (0, 1, 2, 3)
+                option_index = int(user_answer)
+                if 0 <= option_index < len(question.options):
+                    selected_option = question.options[option_index]
+                    
+                    # Handle different answer formats
+                    # Case 1: Correct answer is just letter (e.g., "A")
+                    if len(question.correct_answer.strip()) == 1 and question.correct_answer.strip().upper() in 'ABCD':
+                        # Extract letter from option (e.g., "A) text..." -> "A")
+                        option_letter = selected_option.strip()[0].upper() if selected_option.strip() else ''
+                        is_correct = option_letter == question.correct_answer.strip().upper()
+                    else:
+                        # Case 2: Correct answer is full text
+                        is_correct = selected_option.strip().lower() == question.correct_answer.strip().lower()
+                else:
+                    is_correct = False
+            else:
+                # Text-based answer (legacy)
+                is_correct = user_answer.strip().lower() == question.correct_answer.strip().lower()
+            
             if is_correct:
                 feedback_message = f"Excellent! {question.explanation}"
             else:
-                feedback_message = f"Not quite. {question.explanation} Your answer was '{user_answer}', but understanding this concept is what matters most!"
+                feedback_message = f"Not quite. {question.explanation} Understanding this concept is what matters most!"
         elif action == "teach_me":
             is_correct = None
             feedback_message = f"Great choice to learn more! {question.explanation}"
@@ -170,7 +191,7 @@ class AdaptiveQuizService:
             feedback_message = "No problem! Let's explore something different. Every learner has their own path and pace."
         
         # Update quiz question record
-        quiz_question.user_answer = user_answer
+        quiz_question.user_answer = str(user_answer) if user_answer is not None else None
         quiz_question.is_correct = is_correct
         quiz_question.answered_at = datetime.utcnow()
         quiz_question.time_spent = time_spent
@@ -194,9 +215,28 @@ class AdaptiveQuizService:
         
         # Update user progress for answers
         learning_progress = 0.0
+        mastery_advancement = None
         if action == "answer" and is_correct is not None:
             learning_progress = await self._update_adaptive_user_progress(
                 db, session.user_id, topic.id, is_correct, question.difficulty
+            )
+            
+            # Record answer in mastery system for proper tracking
+            from services.mastery_progress_service import MasteryProgressService
+            from core.mastery_levels import MasteryLevel
+            mastery_service = MasteryProgressService()
+            
+            # Use the session's mastery level or default to novice
+            session_mastery = MasteryLevel.NOVICE  # Default for adaptive sessions
+            mastery_advancement = await mastery_service.record_mastery_answer(
+                db, session.user_id, topic.id, session_mastery, is_correct
+            )
+        else:
+            # For non-answer actions, still provide current mastery status
+            from services.mastery_progress_service import MasteryProgressService
+            mastery_service = MasteryProgressService()
+            mastery_advancement = await mastery_service.get_current_mastery_status(
+                db, session.user_id, topic.id
             )
         
         # Track comprehensive interest signals across topic tree
@@ -260,6 +300,10 @@ class AdaptiveQuizService:
                 "topic_mastery": await self._get_topic_mastery_level(db, session.user_id, topic.id)
             }
         }
+        
+        # Add mastery advancement information for frontend compatibility
+        if mastery_advancement:
+            response["mastery_advancement"] = mastery_advancement
         
         # Add discovery notifications
         if unlocked_topics:

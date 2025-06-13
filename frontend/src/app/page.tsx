@@ -7,12 +7,25 @@ import { ProgressDashboard } from '@/components/ProgressDashboard';
 export default function Home() {
   const [currentView, setCurrentView] = useState<'learning' | 'progress'>('learning');
   const [resetKey, setResetKey] = useState(0);
+  const [startSession, setStartSession] = useState<{sessionId: number, topicId: number} | null>(null);
+  const [treeRefreshKey, setTreeRefreshKey] = useState(0);
+  
   const handleViewChange = (view: string) => {
     setCurrentView(view as 'learning' | 'progress');
   };
 
   const handleBackToLearning = () => {
     setCurrentView('learning');
+  };
+
+  const handleStartLearningWithSession = (sessionId: number, topicId: number) => {
+    setStartSession({ sessionId, topicId });
+    setCurrentView('learning');
+  };
+
+  const handleTopicsUnlocked = () => {
+    // Force refresh of ProgressDashboard tree when new topics are unlocked
+    setTreeRefreshKey(prev => prev + 1);
   };
 
   return (
@@ -70,11 +83,21 @@ export default function Home() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {currentView === 'learning' && (
-          <AdaptiveLearning key={resetKey} onViewChange={handleViewChange} />
+          <AdaptiveLearning 
+            key={resetKey} 
+            onViewChange={handleViewChange}
+            startSession={startSession}
+            onSessionUsed={() => setStartSession(null)}
+            onTopicsUnlocked={handleTopicsUnlocked}
+          />
         )}
         
         {currentView === 'progress' && (
-          <ProgressDashboard onBack={handleBackToLearning} />
+          <ProgressDashboard 
+            key={treeRefreshKey}
+            onBack={handleBackToLearning}
+            onStartLearning={handleStartLearningWithSession}
+          />
         )}
       </main>
     </div>

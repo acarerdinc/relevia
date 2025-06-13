@@ -123,31 +123,41 @@ class LearningProgressCalculator:
                 "confidence": 0.0,
                 "mastery_level": "novice",
                 "questions_answered": 0,
-                "accuracy": 0.0,
                 "proficiency": {
-                    "current_accuracy": 0.0,
-                    "required_accuracy": 0.8,
-                    "progress_percent": 0.0,
-                    "mastery_level": "novice"
+                    "mastery_level": "novice",
+                    "questions_answered": 0,
+                    "progress_to_next": 0.0,
+                    "can_unlock_subtopics": False
                 }
             }
         
         progress, topic = result
-        accuracy = (progress.correct_answers / progress.questions_answered 
-                   if progress.questions_answered > 0 else 0.0)
+        questions_answered = progress.questions_answered or 0
+        mastery_level = progress.mastery_level or "novice"
+        
+        # Calculate progress towards next mastery level
+        from core.mastery_levels import MasteryLevel, get_mastery_progress
+        try:
+            current_mastery = MasteryLevel(mastery_level)
+            mastery_progress = get_mastery_progress(questions_answered, current_mastery)
+            progress_percent = mastery_progress["progress_percent"]
+        except (ValueError, KeyError):
+            progress_percent = 0.0
+        
+        # Check if user can unlock subtopics (Competent level or above)
+        can_unlock_subtopics = mastery_level in ["competent", "proficient", "expert", "master"]
         
         return {
             "topic_name": topic.name,
             "skill_level": progress.skill_level or 0.0,
             "confidence": progress.confidence or 0.0,
-            "mastery_level": progress.mastery_level or "novice",
-            "questions_answered": progress.questions_answered or 0,
-            "accuracy": accuracy,
+            "mastery_level": mastery_level,
+            "questions_answered": questions_answered,
             "proficiency": {
-                "current_accuracy": accuracy,
-                "required_accuracy": 0.8,
-                "progress_percent": min(100, (accuracy / 0.8) * 100) if accuracy > 0 else 0,
-                "mastery_level": progress.mastery_level or "novice"
+                "mastery_level": mastery_level,
+                "questions_answered": questions_answered,
+                "progress_to_next": progress_percent,
+                "can_unlock_subtopics": can_unlock_subtopics
             }
         }
     

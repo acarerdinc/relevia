@@ -148,7 +148,7 @@ class DynamicOntologyService:
         user_id: int,
         topic_id: int
     ) -> List[Dict]:
-        """Check if user has achieved proficiency to dynamically generate and unlock subtopics"""
+        """Check if user has achieved mastery level to dynamically generate and unlock subtopics"""
         
         # Get user's progress on this topic
         result = await db.execute(
@@ -161,22 +161,17 @@ class DynamicOntologyService:
         if not progress or progress.questions_answered < self.min_questions_for_proficiency:
             return []
         
-        # Calculate proficiency
-        accuracy = progress.correct_answers / progress.questions_answered
-        proficiency_level = self._determine_proficiency_level(accuracy, progress.questions_answered)
-        
-        # Update mastery level
-        # Legacy field - don't override current_mastery_level
-        # progress.mastery_level = proficiency_level
+        # Use mastery level instead of accuracy
+        current_mastery_level = progress.current_mastery_level or "novice"
         
         unlocked_topics = []
         
-        # Check if proficiency threshold is met for unlocking or if user has progressed to higher mastery levels
+        # Check if user has reached Competent level or higher for subtopic generation
         should_generate_subtopics = (
-            # First time reaching proficiency
-            (accuracy >= self.PROFICIENCY_THRESHOLDS["beginner"] and not progress.proficiency_threshold_met) or
-            # Progressive generation for higher mastery levels with few existing children
-            (accuracy >= self.PROFICIENCY_THRESHOLDS["intermediate"] and progress.current_mastery_level in ["competent", "proficient", "expert", "master"])
+            # First time reaching competent level
+            (current_mastery_level in ["competent", "proficient", "expert", "master"] and not progress.proficiency_threshold_met) or
+            # Progressive generation for higher mastery levels
+            (current_mastery_level in ["proficient", "expert", "master"])
         )
         
         if should_generate_subtopics:
@@ -189,9 +184,9 @@ class DynamicOntologyService:
             if not current_topic:
                 return []
             
-            # First, try to unlock existing subtopics that match the proficiency level
+            # First, try to unlock existing subtopics that match the mastery level
             existing_subtopics = await self._get_existing_subtopics_for_unlocking(
-                db, user_id, topic_id, proficiency_level
+                db, user_id, topic_id, current_mastery_level
             )
             
             # Unlock appropriate existing subtopics
@@ -229,7 +224,7 @@ class DynamicOntologyService:
                         "id": subtopic.id,
                         "name": subtopic.name,
                         "description": subtopic.description,
-                        "unlock_reason": f"Mastered {proficiency_level} level in parent topic"
+                        "unlock_reason": f"Reached {current_mastery_level} mastery level in parent topic"
                     })
             
             # Only generate new topics if no existing topics were unlocked and we have very few children
@@ -290,7 +285,7 @@ class DynamicOntologyService:
                         "id": new_topic.id,
                         "name": new_topic.name,
                         "description": new_topic.description,
-                        "unlock_reason": f"Generated based on {proficiency_level} proficiency and interests"
+                        "unlock_reason": f"Generated based on {current_mastery_level} mastery level and interests"
                     })
             else:
                 print(f"🔓 Skipping generation for {current_topic.name} - already has {existing_count} children, unlocked {len(unlocked_topics)} existing topics")
@@ -317,22 +312,17 @@ class DynamicOntologyService:
         if not progress or progress.questions_answered < self.min_questions_for_proficiency:
             return []
         
-        # Calculate proficiency
-        accuracy = progress.correct_answers / progress.questions_answered
-        proficiency_level = self._determine_proficiency_level(accuracy, progress.questions_answered)
-        
-        # Update mastery level
-        # Legacy field - don't override current_mastery_level
-        # progress.mastery_level = proficiency_level
+        # Use mastery level instead of accuracy
+        current_mastery_level = progress.current_mastery_level or "novice"
         
         unlocked_topics = []
         
-        # Check if proficiency threshold is met for unlocking or if user has progressed to higher mastery levels
+        # Check if user has reached Competent level or higher for subtopic unlocking
         should_generate_subtopics = (
-            # First time reaching proficiency
-            (accuracy >= self.PROFICIENCY_THRESHOLDS["beginner"] and not progress.proficiency_threshold_met) or
-            # Progressive generation for higher mastery levels with few existing children
-            (accuracy >= self.PROFICIENCY_THRESHOLDS["intermediate"] and progress.current_mastery_level in ["competent", "proficient", "expert", "master"])
+            # First time reaching competent level
+            (current_mastery_level in ["competent", "proficient", "expert", "master"] and not progress.proficiency_threshold_met) or
+            # Progressive unlocking for higher mastery levels
+            (current_mastery_level in ["proficient", "expert", "master"])
         )
         
         if should_generate_subtopics:
@@ -347,7 +337,7 @@ class DynamicOntologyService:
             
             # Only try to unlock existing subtopics (no generation)
             existing_subtopics = await self._get_existing_subtopics_for_unlocking(
-                db, user_id, topic_id, proficiency_level
+                db, user_id, topic_id, current_mastery_level
             )
             
             # Unlock appropriate existing subtopics
@@ -385,7 +375,7 @@ class DynamicOntologyService:
                         "id": subtopic.id,
                         "name": subtopic.name,
                         "description": subtopic.description,
-                        "unlock_reason": f"Mastered {proficiency_level} level in parent topic"
+                        "unlock_reason": f"Reached {current_mastery_level} mastery level in parent topic"
                     })
         
         await db.commit()
@@ -396,9 +386,9 @@ class DynamicOntologyService:
         db: AsyncSession,
         user_id: int,
         parent_topic_id: int,
-        proficiency_level: str
+        mastery_level: str
     ) -> List[Topic]:
-        """Get existing subtopics that should be unlocked based on proficiency"""
+        """Get existing subtopics that should be unlocked based on mastery level"""
         
         # Get all direct children of this topic
         result = await db.execute(
@@ -406,19 +396,19 @@ class DynamicOntologyService:
         )
         direct_children = result.scalars().all()
         
-        # Filter based on proficiency level
+        # Filter based on mastery level
         subtopics_to_unlock = []
         
         for child in direct_children:
-            # Check difficulty requirements
-            if proficiency_level == "beginner" and child.difficulty_min <= 4:
+            # Check difficulty requirements based on mastery level
+            if mastery_level == "competent" and child.difficulty_min <= 5:
                 subtopics_to_unlock.append(child)
-            elif proficiency_level == "intermediate" and child.difficulty_min <= 6:
+            elif mastery_level == "proficient" and child.difficulty_min <= 7:
                 subtopics_to_unlock.append(child)
-            elif proficiency_level == "advanced" and child.difficulty_min <= 8:
+            elif mastery_level == "expert" and child.difficulty_min <= 9:
                 subtopics_to_unlock.append(child)
-            elif proficiency_level == "expert":
-                subtopics_to_unlock.append(child)
+            elif mastery_level == "master":
+                subtopics_to_unlock.append(child)  # Masters can access all topics
         
         return subtopics_to_unlock
     

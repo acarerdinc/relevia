@@ -46,26 +46,15 @@ interface Question {
   };
   topic_progress?: {
     topic_name: string;
+    skill_level: number;
+    confidence: number;
+    mastery_level: string;
+    questions_answered: number;
     proficiency: {
-      current_accuracy: number;
-      required_accuracy: number;
-      progress_percent: number;
+      mastery_level: string;
       questions_answered: number;
-      min_questions_required: number;
-      questions_progress_percent: number;
-    };
-    interest: {
-      current_score: number;
-      progress_percent: number;
-      level: string;
-    };
-    unlock: {
-      ready: boolean;
-      overall_progress_percent: number;
-      next_threshold: {
-        level: string;
-        accuracy: number;
-      };
+      progress_to_next: number;
+      can_unlock_subtopics: boolean;
     };
   };
 }
@@ -700,58 +689,57 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Proficiency Progress */}
+              {/* Mastery Progress */}
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Accuracy
+                    Progress to Next Level
                   </span>
                   <span className="text-sm text-gray-600 dark:text-gray-400">
-                    {formatPercentage(currentQuestion.topic_progress.proficiency.current_accuracy)}% 
-                    (need {formatPercentage(currentQuestion.topic_progress.proficiency.required_accuracy)}%)
+                    {Math.round(currentQuestion.topic_progress.proficiency.progress_to_next)}%
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 mb-2">
                   <div 
                     className={`h-3 rounded-full transition-all duration-500 ${
-                      currentQuestion.topic_progress.proficiency.progress_percent >= 100 
+                      currentQuestion.topic_progress.proficiency.progress_to_next >= 100 
                         ? 'bg-green-500' 
-                        : currentQuestion.topic_progress.proficiency.progress_percent >= 75
+                        : currentQuestion.topic_progress.proficiency.progress_to_next >= 75
                         ? 'bg-yellow-500'
                         : 'bg-blue-500'
                     }`}
-                    style={{ width: `${Math.min(100, currentQuestion.topic_progress.proficiency.progress_percent)}%` }}
+                    style={{ width: `${Math.min(100, currentQuestion.topic_progress.proficiency.progress_to_next)}%` }}
                   ></div>
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {currentQuestion.topic_progress.proficiency.questions_answered} / {currentQuestion.topic_progress.proficiency.min_questions_required} questions answered
+                  {currentQuestion.topic_progress.proficiency.questions_answered} questions answered at {currentQuestion.topic_progress.proficiency.mastery_level} level
                 </div>
               </div>
 
-              {/* Interest Progress */}
+              {/* Confidence Progress */}
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Interest Level
+                    Confidence Level
                   </span>
                   <span className="text-sm text-gray-600 dark:text-gray-400">
-                    {currentQuestion.topic_progress.interest.level} ({formatPercentage(currentQuestion.topic_progress.interest.current_score)}%)
+                    {Math.round((currentQuestion.topic_progress.confidence / 10) * 100)}%
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 mb-2">
                   <div 
                     className={`h-3 rounded-full transition-all duration-500 ${
-                      currentQuestion.topic_progress.interest.progress_percent >= 70 
-                        ? 'bg-purple-500' 
-                        : currentQuestion.topic_progress.interest.progress_percent >= 40
-                        ? 'bg-indigo-500'
-                        : 'bg-gray-400'
+                      currentQuestion.topic_progress.confidence >= 7 
+                        ? 'bg-green-500' 
+                        : currentQuestion.topic_progress.confidence >= 4
+                        ? 'bg-yellow-500'
+                        : 'bg-red-400'
                     }`}
-                    style={{ width: `${currentQuestion.topic_progress.interest.progress_percent}%` }}
+                    style={{ width: `${Math.min(100, (currentQuestion.topic_progress.confidence / 10) * 100)}%` }}
                   ></div>
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                  Actions: Teach Me (+), Skip (-), Correct answers (+)
+                  Builds through consistent correct answers and practice
                 </div>
               </div>
             </div>
@@ -791,37 +779,24 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
             <div className="mt-4 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  🔓 Tree Navigation
+                  🔓 Subtopic Unlocking
                 </span>
                 <span className={`text-sm font-semibold ${
-                  currentQuestion.topic_progress.unlock.ready 
+                  currentQuestion.topic_progress.proficiency.can_unlock_subtopics 
                     ? 'text-green-600 dark:text-green-400'
-                    : currentQuestion.topic_progress.unlock.has_subtopics
-                    ? 'text-blue-600 dark:text-blue-400'
                     : 'text-gray-600 dark:text-gray-400'
                 }`}>
-                  {currentQuestion.topic_progress.unlock.status || (currentQuestion.topic_progress.unlock.ready ? 'Ready to unlock!' : `${Math.round(currentQuestion.topic_progress.unlock.overall_progress_percent)}%`)}
+                  {currentQuestion.topic_progress.proficiency.can_unlock_subtopics ? 'Unlocked!' : 'Locked'}
                 </span>
               </div>
               
-              {!currentQuestion.topic_progress.unlock.ready && !currentQuestion.topic_progress.unlock.has_subtopics && (
-                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                  <div 
-                    className="h-2 rounded-full bg-gradient-to-r from-blue-500 to-green-500 transition-all duration-500"
-                    style={{ width: `${currentQuestion.topic_progress.unlock.overall_progress_percent}%` }}
-                  ></div>
-                </div>
-              )}
-              
-              {currentQuestion.topic_progress.unlock.ready && (
+              {currentQuestion.topic_progress.proficiency.can_unlock_subtopics ? (
                 <div className="text-sm text-green-600 dark:text-green-400">
-                  ✨ Reach Competent level to explore deeper in the knowledge tree!
+                  ✨ You've reached Competent level! New subtopics are unlocked automatically as you learn.
                 </div>
-              )}
-              
-              {currentQuestion.topic_progress.unlock.has_subtopics && (
-                <div className="text-sm text-blue-600 dark:text-blue-400">
-                  🎯 Keep mastering this level to unlock advanced topics!
+              ) : (
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  🎯 Reach Competent mastery level to unlock specialized subtopics in this area.
                 </div>
               )}
             </div>

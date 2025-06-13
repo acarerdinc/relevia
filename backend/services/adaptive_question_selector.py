@@ -487,10 +487,24 @@ class AdaptiveQuestionSelector:
         # Ensure options is a valid list
         options = selected_question.options if selected_question.options else []
         
-        # Shuffle options to prevent predictable correct answer positions
-        shuffled_options, shuffled_correct = self._shuffle_question_options(
-            options, selected_question.correct_answer
-        )
+        # DEBUG MODE: Skip shuffling and just mark correct answer
+        debug_mode = True  # TODO: Make this configurable
+        
+        if debug_mode:
+            # Don't shuffle in debug mode - just mark the correct answer
+            shuffled_options = options.copy()
+            shuffled_correct = selected_question.correct_answer
+            
+            # Mark correct option with a symbol
+            for i, option in enumerate(shuffled_options):
+                if option == shuffled_correct or option.strip().lower() == shuffled_correct.strip().lower():
+                    shuffled_options[i] = "✓ " + option
+                    break
+        else:
+            # Normal mode: Shuffle options to prevent predictable correct answer positions
+            shuffled_options, shuffled_correct = self._shuffle_question_options(
+                options, selected_question.correct_answer
+            )
         
         return {
             'question_id': selected_question.id,
@@ -969,10 +983,24 @@ Make sure the explanation:
             print(f"✅ Successfully created new question {new_question.id} for topic {topic['name']}")
             print(f"📝 Question concepts: {', '.join(proposed_concepts)}")
             
-            # Shuffle options to prevent predictable correct answer positions
-            shuffled_options, shuffled_correct = self._shuffle_question_options(
-                new_question.options, new_question.correct_answer
-            )
+            # DEBUG MODE: Skip shuffling and just mark correct answer
+            debug_mode = True  # TODO: Make this configurable
+            
+            if debug_mode:
+                # Don't shuffle in debug mode - just mark the correct answer
+                shuffled_options = new_question.options.copy()
+                shuffled_correct = new_question.correct_answer
+                
+                # Mark correct option with a symbol
+                for i, option in enumerate(shuffled_options):
+                    if option == shuffled_correct or option.strip().lower() == shuffled_correct.strip().lower():
+                        shuffled_options[i] = "✓ " + option
+                        break
+            else:
+                # Normal mode: Shuffle options to prevent predictable correct answer positions
+                shuffled_options, shuffled_correct = self._shuffle_question_options(
+                    new_question.options, new_question.correct_answer
+                )
             
             # Return the question data in the expected format
             return {
@@ -1036,8 +1064,22 @@ Make sure the explanation:
         
         print(f"🔧 Created fallback question for {topic_name} (difficulty {difficulty})")
         
-        # Shuffle options to prevent predictable correct answer positions
-        shuffled_options, shuffled_correct = self._shuffle_question_options(options, correct_answer)
+        # DEBUG MODE: Skip shuffling and just mark correct answer
+        debug_mode = True  # TODO: Make this configurable
+        
+        if debug_mode:
+            # Don't shuffle in debug mode - just mark the correct answer
+            shuffled_options = options.copy()
+            shuffled_correct = correct_answer
+            
+            # Mark correct option with a symbol
+            for i, option in enumerate(shuffled_options):
+                if option == shuffled_correct or option.strip().lower() == shuffled_correct.strip().lower():
+                    shuffled_options[i] = "✓ " + option
+                    break
+        else:
+            # Normal mode: Shuffle options to prevent predictable correct answer positions
+            shuffled_options, shuffled_correct = self._shuffle_question_options(options, correct_answer)
         
         # Return the question data without trying to save to DB
         # The calling function will handle database operations

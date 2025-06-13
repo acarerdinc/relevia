@@ -203,10 +203,32 @@ class AdaptiveQuizEngine:
         topic_correct = user_progress.correct_answers if user_progress else 0
         topic_accuracy = (topic_correct / topic_questions) if topic_questions > 0 else 0
         
-        # Shuffle options to prevent predictable correct answer positions
-        shuffled_options, shuffled_correct = self._shuffle_question_options(
-            question.options, question.correct_answer
-        )
+        # DEBUG MODE: Skip shuffling and just mark correct answer
+        debug_mode = True  # TODO: Make this configurable
+        
+        if debug_mode:
+            # Don't shuffle in debug mode - just mark the correct answer
+            shuffled_options = question.options.copy()
+            shuffled_correct = question.correct_answer
+            
+            # Mark correct option with a symbol
+            for i, option in enumerate(shuffled_options):
+                # Check for exact match first
+                if option == shuffled_correct or option.strip().lower() == shuffled_correct.strip().lower():
+                    shuffled_options[i] = "✓ " + option
+                    break
+                # Check for letter-based match (e.g., correct_answer="C" matches "C) text...")
+                elif (len(shuffled_correct.strip()) == 1 and 
+                      shuffled_correct.strip().upper() in 'ABCD' and
+                      option.strip() and 
+                      option.strip()[0].upper() == shuffled_correct.strip().upper()):
+                    shuffled_options[i] = "✓ " + option
+                    break
+        else:
+            # Normal mode: Shuffle options to prevent predictable correct answer positions
+            shuffled_options, shuffled_correct = self._shuffle_question_options(
+                question.options, question.correct_answer
+            )
         
         # Return question in the same format as adaptive API
         return {
@@ -288,6 +310,10 @@ class AdaptiveQuizEngine:
                 option_index = int(user_answer)
                 if 0 <= option_index < len(question.options):
                     selected_option = question.options[option_index]
+                    
+                    # DEBUG: Strip debug symbol if present
+                    if selected_option.startswith("✓ "):
+                        selected_option = selected_option[2:]
                     
                     # Handle different answer formats
                     # Case 1: Correct answer is just letter (e.g., "A")

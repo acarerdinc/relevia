@@ -83,23 +83,32 @@ Topic: "{parent_topic.name}"
 Description: "{parent_topic.description}"
 
 CRITICAL REQUIREMENTS:
-1. MUTUALLY EXCLUSIVE: Each subtopic covers a distinct area with NO overlap
+1. MUTUALLY EXCLUSIVE: Each subtopic covers a distinct area with NO overlap between any subtopics
 2. COLLECTIVELY EXHAUSTIVE: Together, the subtopics must cover EVERYTHING in the parent topic
 3. KNOWLEDGE-FOCUSED: Generate conceptual divisions and paradigms, NOT methodologies or processes
 4. COMPLETE COVERAGE: A student mastering all {count} subtopics should have comprehensive knowledge of "{parent_topic.name}"
 
-THINK: "What are the main types/approaches/domains within this field?" 
-NOT: "What are the steps/methods/techniques for doing this?"
+METHODOLOGY - Apply MECE Principle:
+- Start by identifying ALL major areas within the topic
+- Group related concepts into broader categories to avoid overlap
+- Ensure no important area is left uncovered
+- Test: Can a concept belong to multiple subtopics? If yes, reorganize.
 
-GOOD EXAMPLES:
-- For "Mathematics": Algebra, Geometry, Calculus, Statistics (knowledge domains)
-- For "Physics": Mechanics, Thermodynamics, Electromagnetism, Quantum Physics (fundamental areas)
-- For "Machine Learning": Supervised Learning, Unsupervised Learning, Reinforcement Learning, Deep Learning (paradigms)
+GOOD EXAMPLES (MECE):
+- For "Mathematics": Pure Mathematics, Applied Mathematics, Statistics & Probability (non-overlapping domains)
+- For "Biology": Molecular Biology, Ecology, Evolution & Genetics, Physiology (distinct scales/approaches)
+- For "Computer Science": Theoretical Foundations, Systems & Software, Data & AI, Human-Computer Interaction (orthogonal areas)
 
-BAD EXAMPLES:
-- For "Mathematics": Problem Solving, Proof Techniques, Calculator Usage (methodologies)
-- For "Physics": Lab Techniques, Measurement Methods, Data Analysis (processes)
-- For "Machine Learning": Feature Engineering, Model Evaluation, Data Preprocessing (methodologies)
+BAD EXAMPLES (VIOLATE MECE):
+- For "Mathematics": Algebra, Calculus, Problem Solving (Problem Solving uses Algebra & Calculus)
+- For "Biology": Genetics, Molecular Biology, DNA (Genetics includes DNA, overlaps with Molecular Biology)
+- For "Computer Science": Programming, Software Engineering, Web Development (Web Dev is part of Programming/Software Eng)
+
+VALIDATION CHECKLIST:
+✓ Each subtopic addresses a different fundamental question or aspect
+✓ No subtopic is a subset, tool, or application of another
+✓ Combined subtopics represent 100% of the parent topic's scope
+✓ An expert could specialize in one subtopic without deep knowledge of others
 
 Generate {count} subtopics that represent the fundamental knowledge divisions of "{parent_topic.name}".
 

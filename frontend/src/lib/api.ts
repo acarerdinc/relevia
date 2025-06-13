@@ -121,6 +121,15 @@ class ApiService {
   async getRecentUnlocks(userId: number, limit: number = 10): Promise<{ recent_unlocks: any[] }> {
     return this.request(`/personalization/unlocks/${userId}?limit=${limit}`);
   }
+  
+  // Progress endpoints
+  async getUserProgressData(userId: number): Promise<any> {
+    return this.request(`/progress/user/${userId}`);
+  }
+  
+  async getTopicProgressDetails(topicId: number, userId: number = 1): Promise<any> {
+    return this.request(`/progress/topic/${topicId}/details?user_id=${userId}`);
+  }
 }
 
 export const apiService = new ApiService();

@@ -35,7 +35,8 @@
       "Bash(npm run dev:*)",
       "Bash(git checkout:*)",
       "Bash(open:*)",
-      "Bash(true)"
+      "Bash(true)",
+      "Bash(touch:*)"
     ],
     "deny": []
   }

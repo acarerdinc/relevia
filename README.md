@@ -163,15 +163,8 @@ Artificial Intelligence (Root)
 - **Topic status** explains current learning phase
 - **No infinite scrolling** - progress bars at bottom
 
-## 📸 Screenshots
-
 ### 🎯 **Intelligent Question Diversity**
-The system generates sophisticated, varied questions that explore different aspects of topics, preventing repetitive themes.
-
-**Example: Advanced Multi-Modal Learning Question**
-![Question Diversity Example](docs/images/question-diversity-example.png)
-
-*This screenshot shows the system asking a complex question about fine-tuning Transformer models with CNNs for image-based text processing - demonstrating the sophisticated, diverse questions the AI generates rather than basic repetitive ones.*
+The system generates sophisticated, varied questions that explore different aspects of topics, preventing repetitive themes. Rather than asking basic repetitive questions, the AI creates complex inquiries about advanced topics like fine-tuning Transformer models with CNNs for image-based text processing.
 
 ### 🌟 **Key Question Diversity Features:**
 - **Semantic Analysis**: Prevents asking similar questions about the same concepts

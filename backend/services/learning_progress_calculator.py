@@ -7,6 +7,7 @@ from sqlalchemy import select, update
 from core.logging_config import logger
 
 from db.models import UserSkillProgress, Topic
+from services.mastery_progress_service import MasteryProgressService
 
 
 class LearningProgressCalculator:
@@ -19,6 +20,7 @@ class LearningProgressCalculator:
             1: 0.5, 2: 0.6, 3: 0.7, 4: 0.8, 5: 1.0,
             6: 1.2, 7: 1.4, 8: 1.6, 9: 1.8, 10: 2.0
         }
+        self.mastery_service = MasteryProgressService()
     
     async def update_adaptive_user_progress(
         self, 
@@ -75,14 +77,12 @@ class LearningProgressCalculator:
         progress.skill_level = max(0.0, min(10.0, old_skill_level + learning_delta))
         progress.confidence = max(0.0, min(10.0, old_confidence + confidence_delta))
         
-        # Update question tracking
-        progress.questions_answered = (progress.questions_answered or 0) + 1
-        if is_correct:
-            progress.correct_answers = (progress.correct_answers or 0) + 1
-        
-        # Update mastery level based on skill progression
-        progress.mastery_level = self._calculate_mastery_level(
-            progress.skill_level, progress.confidence
+        # Update mastery level using proper mastery progression service
+        # (This will also update questions_answered and correct_answers)
+        from core.mastery_levels import MasteryLevel
+        current_mastery = MasteryLevel(progress.current_mastery_level or "novice")
+        mastery_result = await self.mastery_service.record_mastery_answer(
+            db, user_id, topic_id, current_mastery, is_correct
         )
         
         await db.commit()
@@ -132,17 +132,14 @@ class LearningProgressCalculator:
             }
         
         progress, topic = result
-        questions_answered = progress.questions_answered or 0
-        mastery_level = progress.mastery_level or "novice"
         
-        # Calculate progress towards next mastery level
-        from core.mastery_levels import MasteryLevel, get_mastery_progress
-        try:
-            current_mastery = MasteryLevel(mastery_level)
-            mastery_progress = get_mastery_progress(questions_answered, current_mastery)
-            progress_percent = mastery_progress["progress_percent"]
-        except (ValueError, KeyError):
-            progress_percent = 0.0
+        # Get proper mastery tracking data from mastery service
+        mastery_data = await self.mastery_service.get_user_mastery(db, progress.user_id, topic.id)
+        
+        questions_answered = progress.questions_answered or 0
+        mastery_level = mastery_data["current_level"]
+        questions_at_current_level = mastery_data["questions_answered_at_level"]
+        progress_percent = mastery_data["progress_to_next"]["progress_percent"]
         
         # Check if user can unlock subtopics (Competent level or above)
         can_unlock_subtopics = mastery_level in ["competent", "proficient", "expert", "master"]
@@ -155,7 +152,7 @@ class LearningProgressCalculator:
             "questions_answered": questions_answered,
             "proficiency": {
                 "mastery_level": mastery_level,
-                "questions_answered": questions_answered,
+                "questions_answered": questions_at_current_level,
                 "progress_to_next": progress_percent,
                 "can_unlock_subtopics": can_unlock_subtopics
             }

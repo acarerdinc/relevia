@@ -171,6 +171,8 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
       }
     } catch (error) {
       console.error('Failed to start learning:', error);
+      setSessionId(null); // Reset session on start error
+      setCurrentQuestion(null);
     } finally {
       setIsLoading(false);
     }
@@ -190,7 +192,9 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
       const data = await response.json();
       
       if (data.error) {
+        console.log('No more questions available, resetting session');
         setCurrentQuestion(null);
+        setSessionId(null); // Reset session so Continue Learning works again
         await loadDashboard(); // Refresh dashboard
       } else {
         setCurrentQuestion(data);
@@ -201,6 +205,7 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
     } catch (error) {
       console.error('Failed to get question:', error);
       setCurrentQuestion(null);
+      setSessionId(null); // Reset session on error too
       await loadDashboard();
       setIsLoading(false);
     }

@@ -1,6 +1,7 @@
 import google.generativeai as genai
 from typing import Dict, List, Optional
 from core.config import settings
+from core.logging_config import logger
 import json
 
 class GeminiService:
@@ -18,10 +19,10 @@ class GeminiService:
                         self.model = genai.GenerativeModel('gemini-pro')
                     except:
                         self.model = None
-                        print("⚠️  WARNING: Could not initialize any Gemini model.")
+                        logger.warning("Could not initialize any Gemini model")
         else:
             self.model = None
-            print("⚠️  WARNING: Gemini API key not configured. Question generation will use fallback questions.")
+            logger.warning("Gemini API key not configured. Question generation will use fallback questions")
     
     async def generate_question(
         self, 
@@ -94,10 +95,39 @@ Important: Return ONLY the JSON object, no additional text."""
             raise Exception("Gemini model not initialized")
         
         try:
-            response = self.model.generate_content(prompt)
+            import asyncio
+            import time
+            
+            # Add timing and run sync method in thread pool
+            start_time = time.time()
+            gemini_logger = logger.getChild("gemini")
+            gemini_logger.info("Starting Gemini API call")
+            
+            # Run the synchronous call in a thread pool to avoid blocking
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None, 
+                self.model.generate_content, 
+                prompt
+            )
+            
+            elapsed_ms = (time.time() - start_time) * 1000
+            gemini_logger.info(f"Gemini API completed in {elapsed_ms:.1f}ms")
+            
+            # Log to performance logger if slow
+            if elapsed_ms > 3000:
+                perf_logger = logger.getChild("performance")
+                perf_logger.warning(f"SLOW GEMINI: API call took {elapsed_ms:.1f}ms")
+            
+            # If extremely slow (>30s), log as critical issue
+            if elapsed_ms > 30000:
+                error_logger = logger.getChild("errors")
+                error_logger.error(f"CRITICAL: Gemini API took {elapsed_ms:.1f}ms - consider disabling AI generation temporarily")
+            
             return response.text.strip()
         except Exception as e:
-            print(f"Error generating content: {e}")
+            error_logger = logger.getChild("errors")
+            error_logger.error(f"Gemini API error: {e}")
             raise
     
     def _get_fallback_question(self, topic: str, difficulty: int) -> Dict:

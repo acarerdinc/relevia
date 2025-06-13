@@ -135,7 +135,7 @@ class DynamicTopicUnlock(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    parent_topic_id = Column(Integer, ForeignKey("topics.id"), nullable=False)
+    parent_topic_id = Column(Integer, ForeignKey("topics.id"), nullable=True)
     unlocked_topic_id = Column(Integer, ForeignKey("topics.id"), nullable=False)
     unlock_trigger = Column(String)  # proficiency, interest, exploration
     unlocked_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AdaptiveLearning } from '@/components/AdaptiveLearning';
 import { ProgressDashboard } from '@/components/ProgressDashboard';
 
 export default function Home() {
   const [currentView, setCurrentView] = useState<'learning' | 'progress'>('learning');
+  const [resetKey, setResetKey] = useState(0);
   const handleViewChange = (view: string) => {
     setCurrentView(view as 'learning' | 'progress');
   };
@@ -21,8 +22,17 @@ export default function Home() {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
               <button
-                onClick={() => setCurrentView('learning')}
-                className="flex items-center group hover:opacity-80 transition-opacity"
+                onClick={() => {
+                  console.log('Relevia logo clicked - switching to learning view');
+                  if (currentView === 'learning') {
+                    // If already on learning page, reset the component
+                    setResetKey(prev => prev + 1);
+                  } else {
+                    // Switch to learning view
+                    setCurrentView('learning');
+                  }
+                }}
+                className="flex items-center group hover:opacity-80 active:opacity-60 transition-all duration-150 cursor-pointer select-none"
               >
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                   🧠 Relevia
@@ -60,7 +70,7 @@ export default function Home() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {currentView === 'learning' && (
-          <AdaptiveLearning onViewChange={handleViewChange} />
+          <AdaptiveLearning key={resetKey} onViewChange={handleViewChange} />
         )}
         
         {currentView === 'progress' && (

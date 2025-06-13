@@ -342,13 +342,27 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
                 Topic: {currentQuestion.topic_name} • Strategy: {currentQuestion.selection_strategy}
               </p>
             </div>
-            <div className="text-right">
-              <p className="text-sm font-medium text-gray-900 dark:text-white">
-                Infinite Learning
-              </p>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Session accuracy: {formatPercentage(currentQuestion.session_progress?.session_accuracy || 0)}%
-              </p>
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                  Infinite Learning
+                </p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Session accuracy: {formatPercentage(currentQuestion.session_progress?.session_accuracy || 0)}%
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setCurrentQuestion(null);
+                  setSessionId(null);
+                  setQuestionCount(0);
+                  setShowFeedback(false);
+                }}
+                className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                title="Exit to main page"
+              >
+                ← Exit
+              </button>
             </div>
           </div>
         </div>

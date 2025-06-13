@@ -20,12 +20,17 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                🧠 Relevia
-              </h1>
-              <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">
-                Adaptive AI Learning
-              </span>
+              <button
+                onClick={() => setCurrentView('learning')}
+                className="flex items-center group hover:opacity-80 transition-opacity"
+              >
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                  🧠 Relevia
+                </h1>
+                <span className="ml-2 text-sm text-gray-500 dark:text-gray-400 group-hover:text-blue-500 dark:group-hover:text-blue-300 transition-colors">
+                  Adaptive AI Learning
+                </span>
+              </button>
             </div>
             <nav className="flex space-x-4">
               <button

@@ -613,79 +613,6 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
                 </div>
               </div>
               
-              {/* Mastery Progress Info */}
-              <div className="mt-4 p-3 rounded-lg bg-gradient-to-r from-blue-50 to-green-50 dark:from-blue-900/20 dark:to-green-900/20 border border-blue-200 dark:border-blue-800">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
-                      Progress to Next Level
-                    </span>
-                    {currentQuestion.mastery_level && currentQuestion.mastery_level.toLowerCase() !== 'master' && (
-                      <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                        {(() => {
-                          const currentLevel = (currentQuestion.mastery_level || 'novice').toLowerCase();
-                          const questionsNeeded = {
-                            'novice': 8,      // Need 8 questions to reach Competent
-                            'competent': 12,  // Need 12 questions to reach Proficient  
-                            'proficient': 15, // Need 15 questions to reach Expert
-                            'expert': 20      // Need 20 questions to reach Master
-                          };
-                          const nextLevel = {
-                            'novice': 'Competent',
-                            'competent': 'Proficient', 
-                            'proficient': 'Expert',
-                            'expert': 'Master'
-                          };
-                          
-                          // Use data from latest feedback if available, otherwise calculate
-                          if (feedback?.mastery_advancement?.questions_needed !== undefined) {
-                            return `${feedback.mastery_advancement.questions_needed} more correct answers needed to reach ${nextLevel[currentLevel]} level`;
-                          }
-                          
-                          // Fallback calculation
-                          const questionsAnswered = currentQuestion.session_progress?.questions_answered || 0;
-                          const remaining = Math.max(0, questionsNeeded[currentLevel] - questionsAnswered);
-                          
-                          return `${remaining} more correct answers needed to reach ${nextLevel[currentLevel]} level`;
-                        })()}
-                      </p>
-                    )}
-                    {currentQuestion.mastery_level && currentQuestion.mastery_level.toLowerCase() === 'master' && (
-                      <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                        🎉 You've achieved Master level!
-                      </p>
-                    )}
-                  </div>
-                  <div className="text-right">
-                    <span className="text-sm font-bold text-blue-600 dark:text-blue-400">
-                      {(() => {
-                        const currentLevel = (currentQuestion.mastery_level || 'novice').toLowerCase();
-                        if (currentLevel === 'master') return '100%';
-                        
-                        const questionsNeeded = {
-                          'novice': 8,
-                          'competent': 12, 
-                          'proficient': 15,
-                          'expert': 20
-                        };
-                        
-                        // Use backend data if available
-                        if (feedback?.mastery_advancement) {
-                          const questionsAtLevel = feedback.mastery_advancement.questions_at_level || 0;
-                          const required = questionsNeeded[currentLevel];
-                          const progress = Math.min(100, (questionsAtLevel / required) * 100);
-                          return `${Math.round(progress)}%`;
-                        }
-                        
-                        // Fallback calculation
-                        const questionsAnswered = currentQuestion.session_progress?.questions_answered || 0;
-                        const progress = Math.min(100, (questionsAnswered / questionsNeeded[currentLevel]) * 100);
-                        return `${Math.round(progress)}%`;
-                      })()}
-                    </span>
-                  </div>
-                </div>
-              </div>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -696,23 +623,23 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
                     Progress to Next Level
                   </span>
                   <span className="text-sm text-gray-600 dark:text-gray-400">
-                    {Math.round(currentQuestion.topic_progress.proficiency.progress_to_next)}%
+                    {Math.round(currentQuestion.topic_progress.proficiency.progress_to_next || 0)}%
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 mb-2">
                   <div 
                     className={`h-3 rounded-full transition-all duration-500 ${
-                      currentQuestion.topic_progress.proficiency.progress_to_next >= 100 
+                      (currentQuestion.topic_progress.proficiency.progress_to_next || 0) >= 100 
                         ? 'bg-green-500' 
-                        : currentQuestion.topic_progress.proficiency.progress_to_next >= 75
+                        : (currentQuestion.topic_progress.proficiency.progress_to_next || 0) >= 75
                         ? 'bg-yellow-500'
                         : 'bg-blue-500'
                     }`}
-                    style={{ width: `${Math.min(100, currentQuestion.topic_progress.proficiency.progress_to_next)}%` }}
+                    style={{ width: `${Math.min(100, currentQuestion.topic_progress.proficiency.progress_to_next || 0)}%` }}
                   ></div>
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {currentQuestion.topic_progress.proficiency.questions_answered} questions answered at {currentQuestion.topic_progress.proficiency.mastery_level} level
+                  {currentQuestion.topic_progress.proficiency.questions_answered || 0} questions answered at {currentQuestion.topic_progress.proficiency.mastery_level || 'novice'} level
                 </div>
               </div>
 
@@ -723,19 +650,19 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
                     Confidence Level
                   </span>
                   <span className="text-sm text-gray-600 dark:text-gray-400">
-                    {Math.round((currentQuestion.topic_progress.confidence / 10) * 100)}%
+                    {Math.round(((currentQuestion.topic_progress.confidence || 0) / 10) * 100)}%
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 mb-2">
                   <div 
                     className={`h-3 rounded-full transition-all duration-500 ${
-                      currentQuestion.topic_progress.confidence >= 7 
+                      (currentQuestion.topic_progress.confidence || 0) >= 7 
                         ? 'bg-green-500' 
-                        : currentQuestion.topic_progress.confidence >= 4
+                        : (currentQuestion.topic_progress.confidence || 0) >= 4
                         ? 'bg-yellow-500'
                         : 'bg-red-400'
                     }`}
-                    style={{ width: `${Math.min(100, (currentQuestion.topic_progress.confidence / 10) * 100)}%` }}
+                    style={{ width: `${Math.min(100, ((currentQuestion.topic_progress.confidence || 0) / 10) * 100)}%` }}
                   ></div>
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">

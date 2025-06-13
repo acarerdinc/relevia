@@ -12,6 +12,7 @@ from db.models import Topic, QuizSession, Question, QuizQuestion, UserSkillProgr
 from services.gemini_service import gemini_service
 from services.mastery_question_generator import MasteryQuestionGenerator
 from services.mastery_progress_service import MasteryProgressService
+from services.learning_progress_calculator import learning_progress_calculator
 from core.mastery_levels import MasteryLevel
 from core.logging_config import logger
 
@@ -246,30 +247,9 @@ class AdaptiveQuizEngine:
                 "session_accuracy": session_accuracy,
                 "questions_remaining": None  # Not applicable for focused learning
             },
-            "topic_progress": {
-                "topic_name": topic.name,
-                "proficiency": {
-                    "current_accuracy": topic_accuracy,
-                    "required_accuracy": 0.6,  # 60% requirement
-                    "progress_percent": min(100, (topic_accuracy / 0.6) * 100) if topic_accuracy > 0 else 0,
-                    "questions_answered": topic_questions,
-                    "min_questions_required": 3,
-                    "questions_progress_percent": min(100, (topic_questions / 3) * 100)
-                },
-                "interest": {
-                    "current_score": user_progress.confidence if user_progress else 0.5,
-                    "progress_percent": (user_progress.confidence * 100) if user_progress else 50,
-                    "level": "growing" if user_progress and user_progress.confidence > 0.7 else "developing"
-                },
-                "unlock": {
-                    "ready": topic_accuracy >= 0.6 and topic_questions >= 3,
-                    "overall_progress_percent": min(100, ((topic_accuracy * 0.7) + (min(topic_questions, 3) / 3 * 0.3)) * 100),
-                    "next_threshold": {
-                        "level": "mastery",
-                        "accuracy": 0.8
-                    }
-                }
-            }
+            "topic_progress": await learning_progress_calculator.get_current_topic_progress(
+                db, session.user_id, topic.id
+            )
         }
     
     async def submit_answer(

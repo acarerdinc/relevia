@@ -330,7 +330,7 @@ STEP 1: CHECK FOR EXACT MATCHES
 STEP 2: IF NO EXACT MATCH EXISTS
 - Only then consider semantic similarity and parent placement
 - Large Language Models/transformers/BERT/GPT → "Natural Language Processing" or "Modern AI"
-- Computer Vision/CNNs → "Computer Vision"
+- Image processing/CNN techniques → appropriate vision-related topics
 - Reinforcement Learning → "Reinforcement Learning"
 
 RESPOND WITH ONLY THIS JSON FORMAT:

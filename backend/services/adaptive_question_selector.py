@@ -83,6 +83,7 @@ class AdaptiveQuestionSelector:
             if question_data:
                 elapsed_ms = (time.time() - start_time) * 1000
                 print(f"✅ Found existing question for topic {selected_topic['name']} ({elapsed_ms:.1f}ms)")
+                logger.info(f"Selected question ID {question_data.get('question_id')} for session {current_session_id}")
                 await self._update_topic_selection_stats(db, user_id, selected_topic['id'])
                 return question_data
             
@@ -143,12 +144,26 @@ class AdaptiveQuestionSelector:
                 await self._update_topic_selection_stats(db, user_id, backup_topic['id'])
                 return generated_question
             
-        # As final fallback, try any available question (ignoring recently asked filter)
+        # As final fallback, try any available question (but still prefer non-duplicates)
         print(f"All generation attempts failed, trying fallback strategies for user {user_id}")
         
+        # First try with duplicate filter still active
         for topic in topic_scores[:3]:
             question_data = await self._get_question_from_topic(
-                db, user_id, topic, None  # Pass None for session_id to disable recently-asked filter
+                db, user_id, topic, current_session_id  # Keep duplicate filter
+            )
+            
+            if question_data:
+                question_data['is_fallback'] = True
+                question_data['fallback_reason'] = 'generation_failed_with_filter'
+                await self._update_topic_selection_stats(db, user_id, topic['id'])
+                return question_data
+        
+        # Absolute last resort: disable duplicate filter
+        print(f"⚠️ All topics exhausted with duplicate filter, trying without filter as last resort")
+        for topic in topic_scores[:3]:
+            question_data = await self._get_question_from_topic(
+                db, user_id, topic, None  # Disable recently-asked filter only as last resort
             )
             
             if question_data:
@@ -371,13 +386,10 @@ class AdaptiveQuestionSelector:
                 .where(QuizQuestion.quiz_session_id == current_session_id)
             )
             recently_asked = {row[0] for row in recent_result.fetchall()}
+            logger.info(f"Session {current_session_id}: Found {len(recently_asked)} recently asked questions in topic {topic['name']}")
         
-        # If we have very few recently asked questions, allow even more repetition
-        # This ensures we always have questions available when Gemini is slow
-        if len(recently_asked) > 3:  # Only filter if we've asked many questions
-            pass  # Use the filter
-        else:
-            recently_asked = set()  # Don't filter, allow all questions
+        # Always filter recently asked questions to prevent immediate duplicates
+        # Only disable filter as absolute last resort when no questions available
         
         # Get available questions from topic, excluding recently asked ones
         # Only select questions with valid options (for multiple choice)

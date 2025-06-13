@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { LearningRequestInput } from './LearningRequestInput';
 
 interface LearningDashboard {
   learning_state: {
@@ -80,6 +81,8 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
   const [feedback, setFeedback] = useState<any>(null);
   const [showFeedback, setShowFeedback] = useState(false);
   const [questionCount, setQuestionCount] = useState(0);
+  const [topicCreationResult, setTopicCreationResult] = useState<any>(null);
+  const [showTopicCreationFeedback, setShowTopicCreationFeedback] = useState(false);
 
   useEffect(() => {
     loadDashboard();
@@ -254,6 +257,69 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
 
   const formatPercentage = (value: number) => Math.round(value * 100);
 
+  const handleTopicCreated = (result: any) => {
+    setTopicCreationResult(result);
+    setShowTopicCreationFeedback(true);
+    // Refresh dashboard to show new topic
+    setTimeout(() => {
+      loadDashboard();
+    }, 1000);
+    // Keep the feedback visible until user manually dismisses or navigates
+  };
+
+  const handleTopicCreationLoading = (loading: boolean) => {
+    // You can add additional loading states here if needed
+  };
+
+  const navigateToNewTopic = async () => {
+    if (topicCreationResult?.topic_id) {
+      try {
+        // Start a quiz session for the specific topic
+        setIsLoading(true);
+        console.log('🚀 Starting learning for topic:', topicCreationResult.topic_id);
+        
+        // Use the regular quiz API for specific topics
+        const response = await fetch('http://localhost:8000/api/v1/quiz/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            topic_id: topicCreationResult.topic_id,
+            user_id: 1
+          })
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Quiz start failed:', response.status, errorText);
+          throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+        }
+        
+        const session = await response.json();
+        console.log('✅ Quiz session created:', session);
+        setSessionId(session.session_id);
+        
+        // Get first question using the regular quiz endpoint
+        const questionResponse = await fetch(`http://localhost:8000/api/v1/quiz/question/${session.session_id}`);
+        
+        if (!questionResponse.ok) {
+          const questionErrorText = await questionResponse.text();
+          console.error('Get question failed:', questionResponse.status, questionErrorText);
+          throw new Error(`Failed to get question: ${questionResponse.status} - ${questionErrorText}`);
+        }
+        
+        const questionData = await questionResponse.json();
+        console.log('✅ First question received:', questionData);
+        setCurrentQuestion(questionData);
+        setShowTopicCreationFeedback(false);
+        setIsLoading(false);
+      } catch (error) {
+        console.error('Failed to start learning new topic:', error);
+        alert(`Failed to start learning: ${error.message}. The topic has been created and you can access it from the main Continue Learning button.`);
+        setIsLoading(false);
+      }
+    }
+  };
+
   if (!dashboard) {
     return (
       <div className="flex items-center justify-center min-h-96">
@@ -325,12 +391,7 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
                   setShowFeedback(false);
                   setIsLoading(true);
                   if (sessionId) {
-                    const isAdaptive = currentQuestion?.selection_strategy !== 'traditional';
-                    if (isAdaptive) {
-                      getNextQuestion(sessionId);
-                    } else {
-                      getTraditionalQuestion(sessionId);
-                    }
+                    getNextQuestion(sessionId);
                   }
                 }}
                 className="mt-6 px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
@@ -345,19 +406,24 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
               </h3>
               
               <div className="space-y-3 mb-6">
-                {(currentQuestion.options || []).map((option, index) => (
-                  <button
-                    key={index}
-                    onClick={() => submitAnswer(option, 'answer')}
-                    disabled={isLoading}
-                    className="w-full text-left p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 dark:hover:border-blue-600 transition-colors disabled:opacity-50"
-                  >
-                    <span className="font-medium text-blue-600 dark:text-blue-400 mr-3">
-                      {String.fromCharCode(65 + index)}.
-                    </span>
-                    {option}
-                  </button>
-                ))}
+                {(currentQuestion.options || []).map((option, index) => {
+                  // Clean option text by removing any existing letter prefixes (A., B., etc.)
+                  const cleanOption = option.replace(/^[A-Z]\.\s*/, '');
+                  
+                  return (
+                    <button
+                      key={index}
+                      onClick={() => submitAnswer(option, 'answer')}
+                      disabled={isLoading}
+                      className="w-full text-left p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 dark:hover:border-blue-600 transition-colors disabled:opacity-50"
+                    >
+                      <span className="font-medium text-blue-600 dark:text-blue-400 mr-3">
+                        {String.fromCharCode(65 + index)}.
+                      </span>
+                      {cleanOption}
+                    </button>
+                  );
+                })}
               </div>
               
               {/* Action Buttons */}
@@ -522,6 +588,72 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
           </button>
         </div>
       </div>
+
+      {/* Topic Creation Feedback */}
+      {showTopicCreationFeedback && topicCreationResult && (
+        <div className={`${
+          topicCreationResult.action === 'semantic_match_unlocked' 
+            ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800' 
+            : 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800'
+        } rounded-lg p-6 mb-6 relative`}>
+          <button
+            onClick={() => setShowTopicCreationFeedback(false)}
+            className={`absolute top-2 right-2 ${
+              topicCreationResult.action === 'semantic_match_unlocked'
+                ? 'text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200'
+                : 'text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-200'
+            }`}
+          >
+            ✕
+          </button>
+          <div className="flex items-center justify-between pr-8">
+            <div>
+              <h3 className={`text-lg font-semibold mb-2 ${
+                topicCreationResult.action === 'semantic_match_unlocked'
+                  ? 'text-blue-800 dark:text-blue-200'
+                  : 'text-green-800 dark:text-green-200'
+              }`}>
+                {topicCreationResult.action === 'semantic_match_unlocked' ? '🎯' : '🎉'} {topicCreationResult.message}
+              </h3>
+              {topicCreationResult.parent_name && (
+                <p className={`text-sm mt-1 ${
+                  topicCreationResult.action === 'semantic_match_unlocked'
+                    ? 'text-blue-700 dark:text-blue-300'
+                    : 'text-green-700 dark:text-green-300'
+                }`}>
+                  {topicCreationResult.action === 'semantic_match_unlocked' ? 'Found in:' : 'Added under:'} {topicCreationResult.parent_name}
+                </p>
+              )}
+              {topicCreationResult.reasoning && (
+                <p className={`text-sm mt-2 ${
+                  topicCreationResult.action === 'semantic_match_unlocked'
+                    ? 'text-blue-600 dark:text-blue-400'
+                    : 'text-green-600 dark:text-green-400'
+                }`}>
+                  {topicCreationResult.reasoning}
+                </p>
+              )}
+            </div>
+            <button
+              onClick={navigateToNewTopic}
+              disabled={isLoading}
+              className={`px-8 py-3 text-white rounded-lg transition-colors disabled:opacity-50 font-semibold text-lg shadow-lg ${
+                topicCreationResult.action === 'semantic_match_unlocked'
+                  ? 'bg-blue-600 hover:bg-blue-700'
+                  : 'bg-green-600 hover:bg-green-700'
+              }`}
+            >
+              {isLoading ? '🔄 Starting...' : '🚀 Start Learning Now'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Learning Request Input */}
+      <LearningRequestInput 
+        onTopicCreated={handleTopicCreated}
+        onLoading={handleTopicCreationLoading}
+      />
 
       {/* Exploration Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">

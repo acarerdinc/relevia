@@ -15,6 +15,7 @@ interface TopicNode {
   accuracy: number;
   questions_answered: number;
   is_unlocked: boolean;
+  unlocked_at?: string;
   children?: TopicNode[];
   x?: number;
   y?: number;
@@ -55,7 +56,14 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
     
     handleResize();
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    
+    // Set up periodic refresh to catch new topics
+    const refreshInterval = setInterval(fetchProgress, 30000); // Refresh every 30 seconds
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      clearInterval(refreshInterval);
+    };
   }, []);
 
   const fetchProgress = async () => {
@@ -120,6 +128,21 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
     setSelectedNode(node);
   };
 
+  const handleStartLearning = async (node: TopicNode) => {
+    try {
+      // First, navigate to the topic to ensure it's unlocked and set interest
+      await apiService.navigateToTopic(node.id, 1);
+      
+      // Then navigate back to adaptive learning - the parent component should handle this
+      // For now, we'll just show a success message
+      alert(`Ready to learn ${node.name}! You can now go back to the main learning page.`);
+      
+    } catch (error) {
+      console.error('Failed to start learning topic:', error);
+      alert('Unable to start learning this topic. Please try again.');
+    }
+  };
+
   const getNodeColor = (node: TopicNode) => {
     if (!node.is_unlocked) return '#94a3b8'; // gray for locked
     if (node.accuracy >= 0.8) return '#10b981'; // green for mastered
@@ -128,9 +151,23 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
     return '#ef4444'; // red for needs work
   };
 
+  const isUserGeneratedTopic = (node: TopicNode) => {
+    // Check if this is a recently created topic
+    // Topics that are unlocked but have no progress might be user-generated
+    // Also check if they were unlocked very recently (within last hour)
+    const isRecent = node.unlocked_at && 
+      new Date(node.unlocked_at).getTime() > Date.now() - (60 * 60 * 1000); // Last hour
+    
+    return node.questions_answered === 0 && 
+           node.is_unlocked && 
+           isRecent &&
+           node.mastery_level === 'novice';
+  };
+
   const renderNode = (node: TopicNode) => {
     const color = getNodeColor(node);
     const isSelected = selectedNode?.id === node.id;
+    const isUserGenerated = isUserGeneratedTopic(node);
     
     return (
       <g key={node.id}>
@@ -153,11 +190,36 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
           cy={node.y}
           r={isSelected ? 35 : 30}
           fill={color}
-          stroke={isSelected ? '#1f2937' : 'white'}
-          strokeWidth={isSelected ? 4 : 2}
+          stroke={isSelected ? '#1f2937' : isUserGenerated ? '#f59e0b' : 'white'}
+          strokeWidth={isSelected ? 4 : isUserGenerated ? 3 : 2}
+          strokeDasharray={isUserGenerated ? '5,5' : 'none'}
           style={{ cursor: 'pointer', transition: 'all 0.2s' }}
           onClick={() => handleNodeClick(node)}
         />
+        
+        {/* User-generated topic indicator */}
+        {isUserGenerated && (
+          <circle
+            cx={node.x! + 20}
+            cy={node.y! - 20}
+            r="8"
+            fill="#f59e0b"
+            stroke="white"
+            strokeWidth="2"
+          />
+        )}
+        
+        {isUserGenerated && (
+          <text
+            x={node.x! + 20}
+            y={node.y! - 16}
+            textAnchor="middle"
+            className="text-xs font-bold fill-white"
+            style={{ pointerEvents: 'none' }}
+          >
+            ✨
+          </text>
+        )}
         
         {/* Node text */}
         <text
@@ -275,12 +337,21 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
                   📊 Statistics
                 </button>
               </div>
-              <button
-                onClick={onBack}
-                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
-              >
-                Back to Learning
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={fetchProgress}
+                  disabled={loading}
+                  className="px-3 py-2 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50"
+                >
+                  {loading ? '🔄' : '🔄'} Refresh
+                </button>
+                <button
+                  onClick={onBack}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
+                >
+                  Back to Learning
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -336,6 +407,13 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
                   <div className="flex items-center gap-2">
                     <div className="w-4 h-4 rounded-full bg-gray-400"></div>
                     <span className="text-gray-600 dark:text-gray-400">Locked</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="relative">
+                      <div className="w-4 h-4 rounded-full bg-blue-500 border-2 border-yellow-500" style={{borderStyle: 'dashed'}}></div>
+                      <div className="absolute -top-1 -right-1 text-xs">✨</div>
+                    </div>
+                    <span className="text-gray-600 dark:text-gray-400">Your Request</span>
                   </div>
                 </div>
               </div>
@@ -488,6 +566,16 @@ export function ProgressDashboard({ onBack }: ProgressDashboardProps) {
                            'Just Started'}
                         </span>
                       </div>
+                    </div>
+                    
+                    {/* Start Learning Button */}
+                    <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                      <button
+                        onClick={() => handleStartLearning(selectedNode)}
+                        className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                      >
+                        🚀 Start Learning
+                      </button>
                     </div>
                   </>
                 )}

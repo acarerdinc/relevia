@@ -452,6 +452,315 @@ Generate child topics that maintain educational progression and allow for infini
         except Exception as e:
             logger.error(f"Error generating child topics for '{parent_topic_name}': {e}")
             return []
+    
+    async def find_optimal_parent_topic(
+        self, 
+        db: AsyncSession,
+        learning_request: str,
+        existing_topics: List[Dict]
+    ) -> Dict:
+        """
+        Find the optimal parent topic for a user's learning request
+        """
+        
+        # Use Gemini to interpret the learning request
+        interpretation = await self.gemini_service.interpret_learning_request(
+            learning_request, 
+            existing_topics
+        )
+        
+        logger.info(f"Learning request interpretation: {interpretation}")
+        
+        return interpretation
+    
+    async def create_user_requested_topic(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        learning_request: str
+    ) -> Dict:
+        """
+        Create a new topic based on user's free text learning request
+        """
+        
+        # Get existing topics for context
+        existing_topics_result = await db.execute(
+            select(Topic)
+        )
+        existing_topics = []
+        for topic in existing_topics_result.scalars().all():
+            existing_topics.append({
+                "name": topic.name,
+                "description": topic.description,
+                "level": self._calculate_topic_level(topic)
+            })
+        
+        # Get AI interpretation of the request
+        interpretation = await self.find_optimal_parent_topic(
+            db, learning_request, existing_topics
+        )
+        
+        # Check if topic already exists or has strong semantic matches
+        if interpretation.get("already_exists"):
+            existing_match = interpretation.get("existing_topic_match")
+            if existing_match:
+                # Find the existing topic and unlock it for the user
+                existing_topic_result = await db.execute(
+                    select(Topic).where(Topic.name.ilike(f"%{existing_match}%")).limit(1)
+                )
+                existing_topic = existing_topic_result.scalar_one_or_none()
+                
+                if existing_topic:
+                    # Set high interest and unlock
+                    await self._set_user_interest(db, user_id, existing_topic.id, 0.9, "explicit")
+                    await self._unlock_topic_for_user(db, user_id, existing_topic.id)
+                    await db.commit()
+                    
+                    return {
+                        "success": True,
+                        "action": "existing_topic_unlocked",
+                        "topic_id": existing_topic.id,
+                        "topic_name": existing_topic.name,
+                        "message": f"Found existing topic '{existing_topic.name}' and unlocked it for you!",
+                        "confidence": interpretation["confidence"],
+                        "reasoning": f"This topic already covers what you want to learn: {interpretation.get('reasoning', '')}"
+                    }
+        
+        # Check for semantic matches that user might want instead
+        semantic_matches = interpretation.get("semantic_matches", [])
+        
+        # Enhance semantic matching by also checking common relevant topics
+        llm_terms = ["llm", "large language", "language model", "gpt", "bert", "transformer"]
+        if any(term in learning_request.lower() for term in llm_terms):
+            # For LLM requests, always check these important topics
+            important_topics = [
+                "Modern AI: Machine Learning Revolution",
+                "Introduction to Neural Networks and Deep Learning",
+                "Natural Language Processing"
+            ]
+            for topic in important_topics:
+                if topic not in semantic_matches:
+                    semantic_matches.append(topic)
+        
+        if semantic_matches and len(semantic_matches) > 0:
+            # Find the best semantic match by checking quality of match
+            best_match = None
+            best_match_score = 0
+            
+            for match_name in semantic_matches[:5]:  # Check top 5 matches
+                match_result = await db.execute(
+                    select(Topic).where(Topic.name.ilike(f"%{match_name}%")).limit(1)
+                )
+                potential_match = match_result.scalar_one_or_none()
+                if potential_match:
+                    # Score the match based on semantic relevance for LLM-related requests
+                    score = self._calculate_semantic_match_score(
+                        learning_request.lower(), 
+                        potential_match.name.lower(),
+                        interpretation.get("parsed_topic", "").lower()
+                    )
+                    
+                    if score > best_match_score:
+                        best_match = potential_match
+                        best_match_score = score
+            
+            if best_match:
+                # Unlock the semantically similar topic
+                await self._set_user_interest(db, user_id, best_match.id, 0.8, "semantic_match")
+                await self._unlock_topic_for_user(db, user_id, best_match.id)
+                await db.commit()
+                
+                return {
+                    "success": True,
+                    "action": "semantic_match_unlocked",
+                    "topic_id": best_match.id,
+                    "topic_name": best_match.name,
+                    "message": f"Found '{best_match.name}' which covers similar concepts!",
+                    "confidence": interpretation["confidence"],
+                    "reasoning": f"This existing topic is semantically similar to your request. You can also create a more specific topic if needed."
+                }
+        
+        # Find parent topic
+        parent_topic = None
+        if interpretation.get("suggested_parent"):
+            parent_result = await db.execute(
+                select(Topic).where(Topic.name == interpretation["suggested_parent"])
+            )
+            parent_topic = parent_result.scalar_one_or_none()
+        
+        # Create new topic
+        new_topic = Topic(
+            name=interpretation["parsed_topic"],
+            description=interpretation["description"],
+            parent_id=parent_topic.id if parent_topic else None,
+            difficulty_min=max(1, interpretation["difficulty_level"] - 2),
+            difficulty_max=min(10, interpretation["difficulty_level"] + 2)
+        )
+        
+        db.add(new_topic)
+        await db.flush()  # Get the ID
+        
+        # Set high user interest (explicit request)
+        await self._set_user_interest(db, user_id, new_topic.id, 0.9, "explicit")
+        
+        # Create user progress and unlock immediately
+        progress = UserSkillProgress(
+            user_id=user_id,
+            topic_id=new_topic.id,
+            skill_level=0.0,
+            confidence=0.0,
+            questions_answered=0,
+            correct_answers=0,
+            mastery_level="novice",
+            is_unlocked=True,
+            unlocked_at=datetime.utcnow()
+        )
+        
+        db.add(progress)
+        
+        # Record the unlock event
+        unlock_record = DynamicTopicUnlock(
+            user_id=user_id,
+            parent_topic_id=parent_topic.id if parent_topic else None,
+            unlocked_topic_id=new_topic.id,
+            unlock_trigger="user_request",
+            unlocked_at=datetime.utcnow()
+        )
+        
+        db.add(unlock_record)
+        await db.commit()
+        
+        logger.info(f"Created user-requested topic '{new_topic.name}' for user {user_id}")
+        
+        return {
+            "success": True,
+            "action": "new_topic_created",
+            "topic_id": new_topic.id,
+            "topic_name": new_topic.name,
+            "parent_name": parent_topic.name if parent_topic else "Root",
+            "confidence": interpretation["confidence"],
+            "reasoning": interpretation.get("reasoning", ""),
+            "message": f"Created new topic '{new_topic.name}' and unlocked it for you!"
+        }
+    
+    async def _set_user_interest(
+        self, 
+        db: AsyncSession, 
+        user_id: int, 
+        topic_id: int, 
+        interest_score: float,
+        preference_type: str = "explicit"
+    ):
+        """Set or update user interest for a topic"""
+        
+        # Check if interest already exists
+        existing_interest_result = await db.execute(
+            select(UserInterest).where(
+                and_(
+                    UserInterest.user_id == user_id,
+                    UserInterest.topic_id == topic_id
+                )
+            )
+        )
+        existing_interest = existing_interest_result.scalar_one_or_none()
+        
+        if existing_interest:
+            # Update existing interest
+            existing_interest.interest_score = max(existing_interest.interest_score, interest_score)
+            existing_interest.preference_type = preference_type
+            existing_interest.updated_at = datetime.utcnow()
+        else:
+            # Create new interest record
+            interest = UserInterest(
+                user_id=user_id,
+                topic_id=topic_id,
+                interest_score=interest_score,
+                interaction_count=1,
+                time_spent=0,
+                preference_type=preference_type
+            )
+            db.add(interest)
+    
+    async def _unlock_topic_for_user(self, db: AsyncSession, user_id: int, topic_id: int):
+        """Unlock an existing topic for a user"""
+        
+        # Check if progress already exists
+        existing_progress_result = await db.execute(
+            select(UserSkillProgress).where(
+                and_(
+                    UserSkillProgress.user_id == user_id,
+                    UserSkillProgress.topic_id == topic_id
+                )
+            )
+        )
+        existing_progress = existing_progress_result.scalar_one_or_none()
+        
+        if existing_progress:
+            # Update to unlock
+            existing_progress.is_unlocked = True
+            if not existing_progress.unlocked_at:
+                existing_progress.unlocked_at = datetime.utcnow()
+        else:
+            # Create new progress record
+            progress = UserSkillProgress(
+                user_id=user_id,
+                topic_id=topic_id,
+                skill_level=0.0,
+                confidence=0.0,
+                questions_answered=0,
+                correct_answers=0,
+                mastery_level="novice",
+                is_unlocked=True,
+                unlocked_at=datetime.utcnow()
+            )
+            db.add(progress)
+    
+    def _calculate_semantic_match_score(self, request: str, topic_name: str, parsed_topic: str) -> float:
+        """
+        Calculate a semantic match score to prioritize better matches
+        Higher score = better match
+        """
+        score = 0.0
+        
+        # LLM-specific scoring rules
+        llm_terms = ["llm", "large language", "language model", "gpt", "bert", "transformer"]
+        ml_general_terms = ["machine learning", "ai", "artificial intelligence", "modern ai", "revolution"]
+        neural_general_terms = ["neural network", "deep learning", "introduction"]
+        neural_specific_terms = ["tensorflow", "keras", "cnn", "build", "backpropagation", "algorithm"]
+        
+        request_has_llm = any(term in request for term in llm_terms)
+        topic_has_ml_general = any(term in topic_name for term in ml_general_terms)
+        topic_has_neural_general = any(term in topic_name for term in neural_general_terms)
+        topic_has_neural_specific = any(term in topic_name for term in neural_specific_terms)
+        
+        if request_has_llm:
+            # For LLM requests, prefer general ML/AI topics over specific neural network building
+            if topic_has_ml_general and not topic_has_neural_specific:
+                score += 15.0  # Highest preference for general ML/AI topics
+            elif topic_has_neural_general and not topic_has_neural_specific:
+                score += 8.0   # Good preference for general neural network topics
+            elif topic_has_neural_specific:
+                score += 1.0   # Very low preference for specific neural network building/algorithm topics
+            else:
+                score += 5.0   # Medium preference for other topics
+        
+        # Boost score for topics that mention key concepts from parsed topic
+        parsed_words = parsed_topic.split()
+        for word in parsed_words:
+            if len(word) > 3 and word in topic_name:  # Avoid matching small words
+                score += 3.0
+        
+        # Boost score for broader, more foundational topics over specific implementations
+        if "introduction" in topic_name or "fundamentals" in topic_name or "modern" in topic_name:
+            score += 2.0
+        elif "building" in topic_name or "implementation" in topic_name or "algorithm" in topic_name:
+            score -= 3.0  # Strong penalty for very specific implementation topics
+        
+        # Special penalties for clearly inappropriate topics
+        if "backpropagation" in topic_name.lower() and request_has_llm:
+            score -= 5.0  # Strong penalty for backpropagation when asking about LLMs
+        
+        return score
 
 # Global instance
 dynamic_ontology_builder = DynamicOntologyBuilder()

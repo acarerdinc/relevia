@@ -148,14 +148,64 @@ class AdaptiveQuizEngine:
         db.add(quiz_question)
         await db.commit()
         
-        # Return question without revealing correct answer
+        # Get user progress for this topic to include progress information
+        user_progress_result = await db.execute(
+            select(UserSkillProgress)
+            .where(
+                UserSkillProgress.user_id == session.user_id,
+                UserSkillProgress.topic_id == topic.id
+            )
+        )
+        user_progress = user_progress_result.scalar_one_or_none()
+        
+        # Calculate session progress
+        session_questions = session.total_questions or 0
+        session_correct = session.correct_answers or 0
+        session_accuracy = (session_correct / session_questions) if session_questions > 0 else 0
+        
+        # Calculate topic progress
+        topic_questions = user_progress.questions_answered if user_progress else 0
+        topic_correct = user_progress.correct_answers if user_progress else 0
+        topic_accuracy = (topic_correct / topic_questions) if topic_questions > 0 else 0
+        
+        # Return question in the same format as adaptive API
         return {
             "question_id": question.id,
             "quiz_question_id": quiz_question.id,
             "question": question.content,
             "options": question.options,
             "difficulty": question.difficulty,
-            "topic": topic.name
+            "topic_name": topic.name,
+            "selection_strategy": "focused",
+            "session_progress": {
+                "questions_answered": session_questions,
+                "session_accuracy": session_accuracy,
+                "questions_remaining": None  # Not applicable for focused learning
+            },
+            "topic_progress": {
+                "topic_name": topic.name,
+                "proficiency": {
+                    "current_accuracy": topic_accuracy,
+                    "required_accuracy": 0.6,  # 60% requirement
+                    "progress_percent": min(100, (topic_accuracy / 0.6) * 100) if topic_accuracy > 0 else 0,
+                    "questions_answered": topic_questions,
+                    "min_questions_required": 3,
+                    "questions_progress_percent": min(100, (topic_questions / 3) * 100)
+                },
+                "interest": {
+                    "current_score": user_progress.confidence if user_progress else 0.5,
+                    "progress_percent": (user_progress.confidence * 100) if user_progress else 50,
+                    "level": "growing" if user_progress and user_progress.confidence > 0.7 else "developing"
+                },
+                "unlock": {
+                    "ready": topic_accuracy >= 0.6 and topic_questions >= 3,
+                    "overall_progress_percent": min(100, ((topic_accuracy * 0.7) + (min(topic_questions, 3) / 3 * 0.3)) * 100),
+                    "next_threshold": {
+                        "level": "mastery",
+                        "accuracy": 0.8
+                    }
+                }
+            }
         }
     
     async def submit_answer(

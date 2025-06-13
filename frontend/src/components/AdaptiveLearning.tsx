@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { LearningRequestInput } from './LearningRequestInput';
 
 interface LearningDashboard {
@@ -88,6 +88,7 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
   const [topicCreationResult, setTopicCreationResult] = useState<any>(null);
   const [showTopicCreationFeedback, setShowTopicCreationFeedback] = useState(false);
   const [isFocusedSession, setIsFocusedSession] = useState(false);
+  const processedStartSessionRef = useRef<{sessionId: number, topicId: number} | null>(null);
 
   useEffect(() => {
     loadDashboard();
@@ -95,8 +96,16 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
 
   // Handle starting a session passed from ProgressDashboard
   useEffect(() => {
-    if (startSession && !sessionId) {
+    if (startSession && 
+        !sessionId && 
+        (!processedStartSessionRef.current || 
+         processedStartSessionRef.current.sessionId !== startSession.sessionId)) {
+      
       console.log('🎯 Starting session from ProgressDashboard:', startSession);
+      
+      // Mark this session as processed to prevent double execution
+      processedStartSessionRef.current = startSession;
+      
       setSessionId(startSession.sessionId);
       setIsFocusedSession(true); // Mark this as a focused session
       
@@ -108,7 +117,15 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
         onSessionUsed();
       }
     }
-  }, [startSession, sessionId, onSessionUsed]);
+  }, [startSession, sessionId, onSessionUsed]); // Keep all dependencies for React compliance
+
+  // Helper function to reset session state
+  const resetSession = () => {
+    setSessionId(null);
+    setCurrentQuestion(null);
+    setIsFocusedSession(false);
+    processedStartSessionRef.current = null; // Reset the processed session ref
+  };
 
   const loadDashboard = async () => {
     try {
@@ -197,8 +214,7 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
       }
     } catch (error) {
       console.error('Failed to start learning:', error);
-      setSessionId(null); // Reset session on start error
-      setCurrentQuestion(null);
+      resetSession(); // Reset session on start error
     } finally {
       setIsLoading(false);
     }
@@ -224,8 +240,7 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
       
       if (data.error) {
         console.log('No more questions available, resetting session');
-        setCurrentQuestion(null);
-        setSessionId(null); // Reset session so Continue Learning works again
+        resetSession(); // Reset session so Continue Learning works again
         await loadDashboard(); // Refresh dashboard
       } else {
         setCurrentQuestion(data);
@@ -235,8 +250,7 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
       setIsLoading(false);
     } catch (error) {
       console.error('Failed to get question:', error);
-      setCurrentQuestion(null);
-      setSessionId(null); // Reset session on error too
+      resetSession(); // Reset session on error too
       await loadDashboard();
       setIsLoading(false);
     }
@@ -389,8 +403,7 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
               </div>
               <button
                 onClick={() => {
-                  setCurrentQuestion(null);
-                  setSessionId(null);
+                  resetSession();
                   setQuestionCount(0);
                   setShowFeedback(false);
                 }}

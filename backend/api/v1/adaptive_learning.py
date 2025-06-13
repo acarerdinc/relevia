@@ -132,7 +132,8 @@ async def continue_learning(
         
         # Start prefetching second question immediately for faster UX
         import asyncio
-        asyncio.create_task(adaptive_quiz_service._prefetch_next_question(user_id, session_id))
+        from services.question_cache_service import question_cache_service
+        asyncio.create_task(question_cache_service.prefetch_next_question(user_id, session_id))
         
         # Return combined session + question data
         return {

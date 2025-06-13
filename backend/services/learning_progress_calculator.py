@@ -123,7 +123,13 @@ class LearningProgressCalculator:
                 "confidence": 0.0,
                 "mastery_level": "novice",
                 "questions_answered": 0,
-                "accuracy": 0.0
+                "accuracy": 0.0,
+                "proficiency": {
+                    "current_accuracy": 0.0,
+                    "required_accuracy": 0.8,
+                    "progress_percent": 0.0,
+                    "mastery_level": "novice"
+                }
             }
         
         progress, topic = result
@@ -136,7 +142,13 @@ class LearningProgressCalculator:
             "confidence": progress.confidence or 0.0,
             "mastery_level": progress.mastery_level or "novice",
             "questions_answered": progress.questions_answered or 0,
-            "accuracy": accuracy
+            "accuracy": accuracy,
+            "proficiency": {
+                "current_accuracy": accuracy,
+                "required_accuracy": 0.8,
+                "progress_percent": min(100, (accuracy / 0.8) * 100) if accuracy > 0 else 0,
+                "mastery_level": progress.mastery_level or "novice"
+            }
         }
     
     async def get_topic_mastery_level(

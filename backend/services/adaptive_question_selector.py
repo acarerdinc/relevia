@@ -65,8 +65,8 @@ class AdaptiveQuestionSelector:
         if selected_topic:
             # First priority: Check question pool for instant response  
             # Import here to avoid circular dependency
-            from services.adaptive_quiz_service import adaptive_quiz_service
-            pooled_question = adaptive_quiz_service.get_pooled_question(selected_topic['id'])
+            from services.question_cache_service import question_cache_service
+            pooled_question = question_cache_service.get_pool_question(selected_topic['id'])
             
             if pooled_question:
                 elapsed_ms = (time.time() - start_time) * 1000
@@ -118,8 +118,8 @@ class AdaptiveQuestionSelector:
             attempted_topics.add(backup_topic['id'])
             
             # First: Check question pool for backup topic  
-            # adaptive_quiz_service already imported above
-            pooled_question = adaptive_quiz_service.get_pooled_question(backup_topic['id'])
+            # question_cache_service already imported above
+            pooled_question = question_cache_service.get_pool_question(backup_topic['id'])
             
             if pooled_question:
                 print(f"🎯 Using pooled question for backup topic {backup_topic['name']}")

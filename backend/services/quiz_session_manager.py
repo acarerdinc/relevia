@@ -4,7 +4,7 @@ Quiz Session Manager - Handles session creation, management, and validation
 from typing import Dict, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from datetime import datetime
+from datetime import datetime, timezone
 from core.logging_config import logger
 
 from db.models import QuizSession, QuizQuestion, Question, Topic
@@ -23,7 +23,7 @@ class QuizSessionManager:
         session = QuizSession(
             user_id=user_id,
             topic_id=None,  # Adaptive sessions are cross-topic
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
             total_questions=0,
             correct_answers=0,
             session_type="adaptive"
@@ -121,7 +121,7 @@ class QuizSessionManager:
         if not session.started_at:
             return True
         
-        elapsed = datetime.utcnow() - session.started_at
+        elapsed = datetime.now(timezone.utc) - session.started_at
         return elapsed.total_seconds() > (self.session_timeout_minutes * 60)
 
 

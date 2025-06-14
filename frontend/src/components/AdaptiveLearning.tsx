@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { LearningRequestInput } from './LearningRequestInput';
+import { apiService, type Question } from '../lib/api';
 
 interface LearningDashboard {
   learning_state: {
@@ -30,34 +31,7 @@ interface LearningDashboard {
   };
 }
 
-interface Question {
-  question_id: number;
-  quiz_question_id: number;
-  question: string;
-  options: string[];
-  difficulty: number;
-  topic_name: string;
-  selection_strategy: string;
-  mastery_level?: string;
-  session_progress?: {
-    questions_answered: number;
-    session_accuracy: number;
-    questions_remaining: number;
-  };
-  topic_progress?: {
-    topic_name: string;
-    skill_level: number;
-    confidence: number;
-    mastery_level: string;
-    questions_answered: number;
-    proficiency: {
-      mastery_level: string;
-      questions_answered: number;
-      progress_to_next: number;
-      can_unlock_subtopics: boolean;
-    };
-  };
-}
+// Using Question type from ../lib/api
 
 interface AdaptiveLearningProps {
   onViewChange: (view: string) => void;
@@ -191,10 +165,8 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
     setIsLoading(true);
     setIsFocusedSession(false); // This is adaptive learning, not focused
     try {
-      console.log('📡 Fetching from: http://localhost:8000/api/v1/adaptive/continue/1');
-      const response = await fetch('http://localhost:8000/api/v1/adaptive/continue/1');
-      console.log('📡 Response status:', response.status);
-      const data = await response.json();
+      console.log('📡 Fetching from: /adaptive/continue');
+      const data = await apiService.request<any>('/adaptive/continue');
       console.log('📡 Response data:', data);
       
       if (data.session && data.question) {

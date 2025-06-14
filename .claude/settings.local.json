@@ -41,7 +41,10 @@
       "Bash(psql:*)",
       "Bash(rg:*)",
       "Bash(sed:*)",
-      "Bash(git cherry-pick:*)"
+      "Bash(git cherry-pick:*)",
+      "WebFetch(domain:vercel.com)",
+      "Bash(cat:*)",
+      "Bash(cp:*)"
     ],
     "deny": []
   }

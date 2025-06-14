@@ -1,0 +1,14 @@
+{
+  "projects": [
+    {
+      "name": "relevia-backend",
+      "root": "backend",
+      "alias": ["api.relevia.com"]
+    },
+    {
+      "name": "relevia-frontend", 
+      "root": "frontend",
+      "alias": ["relevia.com"]
+    }
+  ]
+}

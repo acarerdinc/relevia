@@ -7,6 +7,8 @@ from pydantic import BaseModel
 from typing import Optional, Union
 
 from db.database import get_db
+from db.models import User
+from api.routes.auth import get_current_user
 from services.adaptive_quiz_service import adaptive_quiz_service
 
 router = APIRouter(prefix="/adaptive", tags=["adaptive_learning"])
@@ -104,9 +106,9 @@ async def get_learning_dashboard(
         raise HTTPException(status_code=500, detail=f"Failed to get dashboard: {str(e)}")
 
 
-@router.get("/continue/{user_id}")
+@router.get("/continue")
 async def continue_learning(
-    user_id: int,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -115,7 +117,7 @@ async def continue_learning(
     """
     try:
         # Start adaptive session
-        session_data = await adaptive_quiz_service.start_adaptive_session(db, user_id)
+        session_data = await adaptive_quiz_service.start_adaptive_session(db, current_user.id)
         session_id = session_data["session_id"]
         
         # Get first question
@@ -133,7 +135,7 @@ async def continue_learning(
         # Start prefetching second question immediately for faster UX
         import asyncio
         from services.question_cache_service import question_cache_service
-        asyncio.create_task(question_cache_service.prefetch_next_question(user_id, session_id))
+        asyncio.create_task(question_cache_service.prefetch_next_question(current_user.id, session_id))
         
         # Return combined session + question data
         return {

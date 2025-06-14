@@ -4,7 +4,7 @@ Learning Dashboard Service - Generates comprehensive learning insights and dashb
 from typing import Dict, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from core.logging_config import logger
 
 from db.models import (
@@ -43,7 +43,7 @@ class LearningDashboardService:
             
             return {
                 "user_id": user_id,
-                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "generated_at": datetime.now().isoformat(),
                 "progress_summary": progress_data,
                 "learning_activity": activity_data,
                 "interests": interest_data,
@@ -57,7 +57,7 @@ class LearningDashboardService:
             return {
                 "error": "Failed to generate dashboard",
                 "user_id": user_id,
-                "generated_at": datetime.now(timezone.utc).isoformat()
+                "generated_at": datetime.now().isoformat()
             }
     
     async def _get_user_progress_summary(self, db: AsyncSession, user_id: int) -> Dict:
@@ -113,7 +113,7 @@ class LearningDashboardService:
     async def _get_learning_activity(self, db: AsyncSession, user_id: int) -> Dict:
         """Get learning activity data over time"""
         # Get sessions from last 30 days
-        thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
+        thirty_days_ago = datetime.now() - timedelta(days=30)
         
         session_result = await db.execute(
             select(QuizSession)
@@ -134,7 +134,7 @@ class LearningDashboardService:
         total_correct = sum(s.correct_answers or 0 for s in sessions)
         
         # Recent activity (last 7 days)
-        seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
+        seven_days_ago = datetime.now() - timedelta(days=7)
         recent_sessions = [s for s in sessions if s.started_at >= seven_days_ago]
         
         return {
@@ -180,7 +180,7 @@ class LearningDashboardService:
             })
         
         # Emerging interests (recently updated with growing scores)
-        recent_threshold = datetime.now(timezone.utc) - timedelta(days=7)
+        recent_threshold = datetime.now() - timedelta(days=7)
         emerging = [
             {
                 "topic_name": topic.name,
@@ -199,7 +199,7 @@ class LearningDashboardService:
     
     async def _get_recent_unlocks(self, db: AsyncSession, user_id: int) -> List[Dict]:
         """Get recently unlocked topics"""
-        recent_threshold = datetime.now(timezone.utc) - timedelta(days=7)
+        recent_threshold = datetime.now() - timedelta(days=7)
         
         result = await db.execute(
             select(DynamicTopicUnlock, Topic)

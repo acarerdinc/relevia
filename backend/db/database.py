@@ -22,7 +22,12 @@ if is_postgresql and is_vercel:
         "pool_pre_ping": True,
         "poolclass": NullPool,  # Let PgBouncer handle pooling
         "connect_args": {
-            "statement_cache_size": 0,  # Disable prepared statements for pgbouncer
+            "server_settings": {
+                "jit": "off"
+            },
+            "command_timeout": 60,
+            "prepared_statement_cache_size": 0,  # Disable prepared statements for pgbouncer
+            "statement_cache_size": 0,  # Also try this variant
         }
     }
 else:

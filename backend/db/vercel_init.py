@@ -34,19 +34,33 @@ async def ensure_database_initialized():
         # Convert postgresql:// to postgresql+asyncpg:// for async support
         if database_url and database_url.startswith("postgresql://"):
             database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-            # Handle Supabase pooler URL parameters
-            if "pooler.supabase.com" in database_url:
-                # Remove pgbouncer parameter if present
-                if "?pgbouncer=true" in database_url:
-                    database_url = database_url.replace("?pgbouncer=true", "?")
-                # Add SSL mode if not present
-                if "sslmode=" not in database_url:
-                    if "?" in database_url:
-                        database_url += "&sslmode=require"
-                    else:
-                        database_url += "?sslmode=require"
+            # For Supabase connections, ensure proper SSL handling
+            if "supabase.co" in database_url:
+                # asyncpg requires different SSL parameter format
+                # Remove any existing ssl/sslmode parameters
+                import re
+                database_url = re.sub(r'[?&](ssl|sslmode)=[^&]*', '', database_url)
+                # Add asyncpg-compatible SSL parameter
+                if "?" in database_url:
+                    database_url += "&ssl=require"
+                else:
+                    database_url += "?ssl=require"
         
-        logger.info(f"Database URL scheme: {database_url.split('://')[0] if '://' in database_url else 'unknown'}")
+        # Log connection details (without password)
+        if database_url and "://" in database_url:
+            parts = database_url.split("://", 1)
+            scheme = parts[0]
+            rest = parts[1]
+            # Hide password in logs
+            if "@" in rest:
+                user_pass, host_rest = rest.split("@", 1)
+                if ":" in user_pass:
+                    user, _ = user_pass.split(":", 1)
+                    logger.info(f"Database connection: {scheme}://{user}:****@{host_rest}")
+                else:
+                    logger.info(f"Database connection: {scheme}://{user_pass}@{host_rest}")
+            else:
+                logger.info(f"Database connection: {database_url}")
         
         # Create engine for this initialization
         engine = create_async_engine(database_url, echo=False)

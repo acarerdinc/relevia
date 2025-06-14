@@ -187,22 +187,30 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
   };
 
   const startLearning = async () => {
+    console.log('🚀 Continue Learning button clicked');
     setIsLoading(true);
     setIsFocusedSession(false); // This is adaptive learning, not focused
     try {
+      console.log('📡 Fetching from: http://localhost:8000/api/v1/adaptive/continue/1');
       const response = await fetch('http://localhost:8000/api/v1/adaptive/continue/1');
+      console.log('📡 Response status:', response.status);
       const data = await response.json();
+      console.log('📡 Response data:', data);
       
       if (data.session && data.question) {
+        console.log('✅ Got session and question, setting up...');
         setSessionId(data.session.session_id);
         setCurrentQuestion(data.question);
         setQuestionCount(1);
       } else if (data.session_id) {
+        console.log('✅ Got session_id only, fetching question...');
         setSessionId(data.session_id);
         await getNextQuestion(data.session_id, false); // Explicitly use adaptive endpoint
+      } else {
+        console.error('❌ Unexpected response structure:', data);
       }
     } catch (error) {
-      console.error('Failed to start learning:', error);
+      console.error('❌ Failed to start learning:', error);
       resetSession(); // Reset session on start error
     } finally {
       setIsLoading(false);

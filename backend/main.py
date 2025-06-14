@@ -5,7 +5,7 @@ import uvicorn
 import time
 import os
 
-from api.routes import health, quiz, topics, auth, progress, personalization, topic_requests, mastery, debug, init_db
+from api.routes import health, quiz, topics, auth, progress, personalization, topic_requests, mastery, debug
 from api.v1 import adaptive_learning
 from core.config import settings
 from core.logging_config import logger, performance_logger
@@ -18,22 +18,13 @@ async def lifespan(app: FastAPI):
     
     # Check if running on Vercel
     if os.environ.get("VERCEL") == "1":
-        logger.info("Running on Vercel - initializing SQLite database")
-        # Initialize database on Vercel
-        from db.init_vercel_db import init_vercel_database
-        await init_vercel_database()
-        # from db.vercel_init import ensure_database_initialized
-        # await ensure_database_initialized()
+        logger.info("Running on Vercel - using existing database")
     else:
         if not is_turso and engine is not None:
             # Standard initialization for local development with async engine
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
             logger.info("✅ Database tables created/verified")
-            
-            # Initialize database with users and topics
-            from db.init_db import init_database
-            await init_database()
         elif is_turso:
             logger.info("Using Turso database - tables should already exist")
     
@@ -50,16 +41,6 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Database initialization middleware for Vercel - DISABLED
-# The database is already initialized, no need to check on every request
-# if os.environ.get("VERCEL") == "1":
-#     @app.middleware("http")
-#     async def ensure_db_initialized(request: Request, call_next):
-#         # Skip for health checks
-#         if "/health" not in request.url.path:
-#             from db.vercel_init import ensure_database_initialized
-#             await ensure_database_initialized()
-#         return await call_next(request)
 
 # API request logging middleware
 @app.middleware("http")
@@ -104,7 +85,6 @@ app.include_router(progress.router, prefix="/api/v1/progress", tags=["progress"]
 app.include_router(personalization.router, prefix="/api/v1/personalization", tags=["personalization"])
 app.include_router(mastery.router, prefix="/api/v1", tags=["mastery"])
 app.include_router(adaptive_learning.router, prefix="/api/v1", tags=["adaptive_learning"])
-app.include_router(init_db.router, prefix="/api/v1/setup", tags=["setup"])
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

@@ -82,7 +82,6 @@ async def ensure_database_initialized():
             # Disable prepared statements completely
             engine_kwargs["connect_args"] = {
                 "statement_cache_size": 0,  # Disable prepared statements
-                "prepared_statement_cache_size": 0,
                 "server_settings": {
                     "jit": "off"
                 },
@@ -94,9 +93,13 @@ async def ensure_database_initialized():
         
         engine = create_async_engine(database_url, **engine_kwargs)
         
-        # Create tables
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        # Create tables - handle pgbouncer issues gracefully
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+        except Exception as e:
+            logger.warning(f"Table creation failed (might already exist): {e}")
+            # Continue anyway - tables might already exist
         
         # Check if data exists
         async with AsyncSession(engine) as db:

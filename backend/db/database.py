@@ -20,7 +20,6 @@ if "pooler.supabase.com:6543" in database_url:
     # Disable prepared statements completely
     engine_kwargs["connect_args"] = {
         "statement_cache_size": 0,  # Disable prepared statements
-        "prepared_statement_cache_size": 0,
         "server_settings": {
             "jit": "off"
         },

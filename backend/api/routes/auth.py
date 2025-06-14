@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text, func
+from sqlalchemy import select, func
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
@@ -100,24 +100,24 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     logger.info(f"Login attempt for: {form_data.username}")
     
     try:
-        # Use raw SQL to avoid prepared statement issues with pgbouncer
-        query = text("""
-            SELECT id, email, username, hashed_password, is_active 
-            FROM users 
-            WHERE email = :email
-            LIMIT 1
-        """)
-        result = await db.execute(query, {"email": form_data.username})
-        row = result.fetchone()
+        # Get the raw connection to bypass SQLAlchemy's prepared statements
+        conn = await db.connection()
+        raw_conn = conn.connection._connection  # Access asyncpg connection directly
+        
+        # Execute query directly on asyncpg connection
+        row = await raw_conn.fetchrow(
+            "SELECT id, email, username, hashed_password, is_active FROM users WHERE email = $1 LIMIT 1",
+            form_data.username
+        )
         
         if row:
             # Manually create user object from row
             user = type('User', (), {
-                'id': row[0],
-                'email': row[1],
-                'username': row[2],
-                'hashed_password': row[3],
-                'is_active': row[4]
+                'id': row['id'],
+                'email': row['email'],
+                'username': row['username'],
+                'hashed_password': row['hashed_password'],
+                'is_active': row['is_active']
             })()
         else:
             user = None

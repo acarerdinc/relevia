@@ -44,7 +44,8 @@
       "Bash(git cherry-pick:*)",
       "WebFetch(domain:vercel.com)",
       "Bash(cat:*)",
-      "Bash(cp:*)"
+      "Bash(cp:*)",
+      "Bash(tail:*)"
     ],
     "deny": []
   }

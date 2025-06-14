@@ -11,8 +11,13 @@ turso_token = os.environ.get("TURSO_AUTH_TOKEN")
 
 if turso_url and turso_token:
     # Use Turso database with authentication
-    default_database_url = f"{turso_url}?authToken={turso_token}"
-    print(f"[CONFIG] Using Turso database: {turso_url[:50]}...")
+    # Convert libsql:// to sqlite+libsql:// for SQLAlchemy
+    if turso_url.startswith("libsql://"):
+        turso_url_fixed = turso_url.replace("libsql://", "sqlite+libsql://")
+    else:
+        turso_url_fixed = turso_url
+    default_database_url = f"{turso_url_fixed}?authToken={turso_token}"
+    print(f"[CONFIG] Using Turso database: {turso_url_fixed[:50]}...")
 else:
     # Fallback to SQLite for local development
     if is_vercel:

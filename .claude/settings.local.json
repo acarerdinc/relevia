@@ -40,7 +40,8 @@
       "Bash(sqlite3:*)",
       "Bash(psql:*)",
       "Bash(rg:*)",
-      "Bash(sed:*)"
+      "Bash(sed:*)",
+      "Bash(git cherry-pick:*)"
     ],
     "deny": []
   }

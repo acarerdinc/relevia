@@ -353,7 +353,7 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
         setIsLoading(false);
       } catch (error) {
         console.error('Failed to start learning new topic:', error);
-        alert(`Failed to start learning: ${error.message}. The topic has been created and you can access it from the main Continue Learning button.`);
+        alert(`Failed to start learning: ${error instanceof Error ? error.message : 'Unknown error'}. The topic has been created and you can access it from the main Continue Learning button.`);
         setIsLoading(false);
       }
     }
@@ -439,7 +439,7 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
                       <p className="text-xs text-purple-600 dark:text-purple-400">
                         {feedback.mastery_advancement.questions_needed} more correct answers needed for {(() => {
                           const currentLevel = feedback.mastery_advancement.current_level.toLowerCase();
-                          const nextLevel = {
+                          const nextLevel: {[key: string]: string} = {
                             'novice': 'Competent',
                             'competent': 'Proficient', 
                             'proficient': 'Expert',
@@ -508,7 +508,7 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
                   return (
                     <button
                       key={index}
-                      onClick={() => submitAnswer(index, 'answer')}
+                      onClick={() => submitAnswer(index.toString(), 'answer')}
                       disabled={isLoading}
                       className="w-full text-left p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 dark:hover:border-blue-600 transition-colors disabled:opacity-50"
                     >

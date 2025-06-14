@@ -13,10 +13,13 @@ interface TopicNode {
   name: string;
   parent_id: number | null;
   mastery_level: string;
-  accuracy: number;
+  current_mastery_level: string;
   questions_answered: number;
+  confidence: number;
+  skill_level: number;
   is_unlocked: boolean;
   unlocked_at?: string;
+  mastery_questions_answered: {[key: string]: number};
   children?: TopicNode[];
   x?: number;
   y?: number;
@@ -25,7 +28,7 @@ interface TopicNode {
 
 interface UserProgress {
   total_topics_unlocked: number;
-  overall_accuracy: number;
+  overall_mastery_progress: number;
   total_questions_answered: number;
   current_streak: number;
   learning_velocity: number;
@@ -281,6 +284,12 @@ export function ProgressDashboard({ onBack, onStartLearning }: ProgressDashboard
     return '#6b7280'; // gray for novice
   };
 
+  const getMasteryProgress = (node: TopicNode) => {
+    // Calculate progress percentage based on mastery level
+    const masteryWeights = { novice: 0, competent: 25, proficient: 50, expert: 75, master: 100 };
+    return masteryWeights[node.current_mastery_level as keyof typeof masteryWeights] || 0;
+  };
+
   const isUserGeneratedTopic = (node: TopicNode) => {
     // Check if this is a recently created topic
     // Topics that are unlocked but have no progress might be user-generated
@@ -409,7 +418,7 @@ export function ProgressDashboard({ onBack, onStartLearning }: ProgressDashboard
             className="text-xs font-bold fill-white"
             style={{ pointerEvents: 'none', fontSize: '10px' }}
           >
-            {Math.round(node.accuracy * 100)}%
+            {node.current_mastery_level.charAt(0).toUpperCase() + node.current_mastery_level.slice(1)}
           </text>
         )}
         
@@ -675,7 +684,7 @@ export function ProgressDashboard({ onBack, onStartLearning }: ProgressDashboard
                         <div className="text-xs opacity-75 mt-1">
                           {hoveredNode.questions_answered > 0 ? (
                             <>
-                              {Math.round(hoveredNode.accuracy * 100)}% accuracy
+                              {hoveredNode.current_mastery_level.charAt(0).toUpperCase() + hoveredNode.current_mastery_level.slice(1)} mastery
                               <span className="mx-1">•</span>
                               {hoveredNode.questions_answered} questions
                             </>
@@ -750,15 +759,15 @@ export function ProgressDashboard({ onBack, onStartLearning }: ProgressDashboard
                     
                     <div>
                       <div className="flex justify-between mb-1">
-                        <span className="text-gray-600 dark:text-gray-400">Overall Accuracy</span>
+                        <span className="text-gray-600 dark:text-gray-400">Overall Mastery Progress</span>
                         <span className="font-semibold">
-                          {Math.round((progress?.overall_accuracy || 0) * 100)}%
+                          {Math.round((progress?.overall_mastery_progress || 0) * 100)}%
                         </span>
                       </div>
                       <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                         <div 
-                          className="bg-green-600 h-2 rounded-full transition-all duration-500"
-                          style={{ width: `${(progress?.overall_accuracy || 0) * 100}%` }}
+                          className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-500"
+                          style={{ width: `${(progress?.overall_mastery_progress || 0) * 100}%` }}
                         ></div>
                       </div>
                     </div>
@@ -805,7 +814,7 @@ export function ProgressDashboard({ onBack, onStartLearning }: ProgressDashboard
                         <div className="flex justify-between mb-1">
                           <span className="text-gray-700 dark:text-gray-300">{topic.name}</span>
                           <span className="text-sm text-gray-600 dark:text-gray-400">
-                            {topic.is_unlocked ? `${Math.round(topic.accuracy * 100)}%` : '🔒 Locked'}
+                            {topic.is_unlocked ? `${topic.current_mastery_level.charAt(0).toUpperCase() + topic.current_mastery_level.slice(1)}` : '🔒 Locked'}
                           </span>
                         </div>
                         <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
@@ -814,8 +823,7 @@ export function ProgressDashboard({ onBack, onStartLearning }: ProgressDashboard
                               topic.is_unlocked ? getNodeColor(topic) : 'bg-gray-400'
                             }`}
                             style={{ 
-                              width: topic.is_unlocked ? `${topic.accuracy * 100}%` : '0%',
-                              backgroundColor: topic.is_unlocked ? getNodeColor(topic) : undefined
+                              width: topic.is_unlocked ? `${getMasteryProgress(topic)}%` : '0%'
                             }}
                           ></div>
                         </div>
@@ -846,9 +854,9 @@ export function ProgressDashboard({ onBack, onStartLearning }: ProgressDashboard
                   <>
                     <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
                       <div className="flex justify-between mb-2">
-                        <span className="text-gray-600 dark:text-gray-400">Accuracy</span>
-                        <span className="font-semibold">
-                          {Math.round(selectedNode.accuracy * 100)}%
+                        <span className="text-gray-600 dark:text-gray-400">Current Mastery</span>
+                        <span className="font-semibold capitalize">
+                          {selectedNode.current_mastery_level}
                         </span>
                       </div>
                       <div className="flex justify-between mb-2">
@@ -895,7 +903,7 @@ export function ProgressDashboard({ onBack, onStartLearning }: ProgressDashboard
                 {!selectedNode.is_unlocked && (
                   <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-4">
                     <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                      Complete prerequisite topics with 60% accuracy and answer at least 3 questions to unlock.
+                      Complete prerequisite topics to unlock. Progress through mastery levels by answering questions correctly.
                     </p>
                   </div>
                 )}

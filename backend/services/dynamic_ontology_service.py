@@ -167,12 +167,20 @@ class DynamicOntologyService:
         unlocked_topics = []
         
         # Check if user has reached Competent level or higher for subtopic generation
-        should_generate_subtopics = (
-            # First time reaching competent level
-            (current_mastery_level in ["competent", "proficient", "expert", "master"] and not progress.proficiency_threshold_met) or
-            # Progressive generation for higher mastery levels
-            (current_mastery_level in ["proficient", "expert", "master"])
+        # For dynamically generated topics, we need to check if they have any children
+        existing_children = await db.execute(
+            select(Topic).where(Topic.parent_id == topic_id)
         )
+        has_children = len(existing_children.scalars().all()) > 0
+        
+        should_generate_subtopics = (
+            # First time reaching competent level (no children exist yet)
+            (current_mastery_level in ["competent", "proficient", "expert", "master"] and not has_children) or
+            # Progressive generation for higher mastery levels
+            (current_mastery_level in ["proficient", "expert", "master"] and has_children)
+        )
+        
+        print(f"🔍 Subtopic generation check for topic {topic_id}: mastery={current_mastery_level}, has_children={has_children}, should_generate={should_generate_subtopics}")
         
         if should_generate_subtopics:
             progress.proficiency_threshold_met = True
@@ -228,10 +236,7 @@ class DynamicOntologyService:
                     })
             
             # Only generate new topics if no existing topics were unlocked and we have very few children
-            existing_children = await db.execute(
-                select(Topic).where(Topic.parent_id == topic_id)
-            )
-            existing_count = len(existing_children.scalars().all())
+            existing_count = len(existing_children.scalars().all())  # Use the already fetched children
             
             # Generate new topics based on different conditions:
             # 1. First time: no existing children

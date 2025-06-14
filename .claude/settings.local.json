@@ -36,7 +36,10 @@
       "Bash(git checkout:*)",
       "Bash(open:*)",
       "Bash(true)",
-      "Bash(touch:*)"
+      "Bash(touch:*)",
+      "Bash(sqlite3:*)",
+      "Bash(psql:*)",
+      "Bash(rg:*)"
     ],
     "deny": []
   }

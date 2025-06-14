@@ -100,14 +100,15 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     logger.info(f"Login attempt for: {form_data.username}")
     
     try:
-        # Get the raw connection to bypass SQLAlchemy's prepared statements
-        raw_conn = await db.get_raw_connection()
-        
-        # Execute query directly on asyncpg connection
-        row = await raw_conn.fetchrow(
-            "SELECT id, email, username, hashed_password, is_active FROM users WHERE email = $1 LIMIT 1",
-            form_data.username
-        )
+        # Access the raw asyncpg connection through SQLAlchemy's connection
+        async with db.bind.connect() as conn:
+            raw_conn = await conn.get_raw_connection()
+            
+            # Execute query directly on asyncpg connection
+            row = await raw_conn.driver_connection.fetchrow(
+                "SELECT id, email, username, hashed_password, is_active FROM users WHERE email = $1 LIMIT 1",
+                form_data.username
+            )
         
         if row:
             # Manually create user object from row

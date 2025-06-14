@@ -118,15 +118,30 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.email}, expires_delta=access_token_expires
-    )
-    
-    logger.info(f"Successful login for: {user.email}, token created with SECRET_KEY: {settings.SECRET_KEY[:10]}...")
-    
-    # Return Token object to match response_model
-    return Token(access_token=access_token, token_type="bearer")
+    try:
+        logger.info(f"Creating token for user: {user.email}")
+        access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        
+        logger.info(f"Token expires in: {access_token_expires}")
+        access_token = create_access_token(
+            data={"sub": user.email}, expires_delta=access_token_expires
+        )
+        
+        logger.info(f"Token created successfully, length: {len(access_token)}")
+        logger.info(f"Successful login for: {user.email}, token created with SECRET_KEY: {settings.SECRET_KEY[:10]}...")
+        
+        # Create response
+        response = Token(access_token=access_token, token_type="bearer")
+        logger.info("Response object created, returning...")
+        
+        return response
+    except Exception as e:
+        logger.error(f"Error during token creation: {str(e)}")
+        logger.error(f"Error type: {type(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Token creation failed: {str(e)}"
+        )
 
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: User = Depends(get_current_user)):

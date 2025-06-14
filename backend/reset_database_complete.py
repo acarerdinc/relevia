@@ -12,8 +12,8 @@ from db.database import engine, Base, AsyncSessionLocal
 from db.models import (
     User, Topic, UserSkillProgress, UserInterest, 
     DynamicTopicUnlock, LearningGoal, QuizSession, 
-    QuizQuestion, Question, Choice, TeachingRecord,
-    CurriculumProgress
+    QuizQuestion, Question, TopicPrerequisite,
+    TopicQuestionHistory
 )
 
 async def drop_all_tables():
@@ -21,23 +21,23 @@ async def drop_all_tables():
     print("🗑️  Dropping all tables...")
     
     async with engine.begin() as conn:
-        # Get all table names
+        # Drop all tables using CASCADE to handle foreign key constraints
+        # First, get all table names in the public schema
         result = await conn.execute(
-            text("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';")
+            text("""
+                SELECT tablename 
+                FROM pg_tables 
+                WHERE schemaname = 'public' 
+                ORDER BY tablename;
+            """)
         )
         tables = result.fetchall()
         
-        # Disable foreign key constraints temporarily
-        await conn.execute(text("PRAGMA foreign_keys = OFF;"))
-        
-        # Drop each table
+        # Drop each table with CASCADE
         for table in tables:
             table_name = table[0]
             print(f"   Dropping table: {table_name}")
-            await conn.execute(text(f"DROP TABLE IF EXISTS {table_name};"))
-        
-        # Re-enable foreign key constraints
-        await conn.execute(text("PRAGMA foreign_keys = ON;"))
+            await conn.execute(text(f"DROP TABLE IF EXISTS {table_name} CASCADE;"))
     
     print("✅ All tables dropped successfully")
 
@@ -89,7 +89,9 @@ async def verify_database():
             ("User Progress", UserSkillProgress),
             ("User Interests", UserInterest),
             ("Dynamic Unlocks", DynamicTopicUnlock),
-            ("Teaching Records", TeachingRecord)
+            ("Learning Goals", LearningGoal),
+            ("Topic Prerequisites", TopicPrerequisite),
+            ("Question History", TopicQuestionHistory)
         ]
         
         for table_name, model in tables_to_check:

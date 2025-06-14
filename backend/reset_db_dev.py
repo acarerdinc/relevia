@@ -15,22 +15,21 @@ async def reset_database():
     print("🔄 Resetting database...")
     
     async with engine.begin() as conn:
-        # Get all table names
+        # Get all table names in the public schema
         result = await conn.execute(
-            text("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';")
+            text("""
+                SELECT tablename 
+                FROM pg_tables 
+                WHERE schemaname = 'public' 
+                ORDER BY tablename;
+            """)
         )
         tables = result.fetchall()
         
-        # Disable foreign key constraints
-        await conn.execute(text("PRAGMA foreign_keys = OFF;"))
-        
-        # Drop each table
+        # Drop each table with CASCADE
         for table in tables:
             table_name = table[0]
-            await conn.execute(text(f"DROP TABLE IF EXISTS {table_name};"))
-        
-        # Re-enable foreign key constraints
-        await conn.execute(text("PRAGMA foreign_keys = ON;"))
+            await conn.execute(text(f"DROP TABLE IF EXISTS {table_name} CASCADE;"))
         
         # Create all tables
         await conn.run_sync(Base.metadata.create_all)

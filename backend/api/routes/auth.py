@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text
+from sqlalchemy import select, text, func
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
@@ -100,9 +100,24 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     logger.info(f"Login attempt for: {form_data.username}")
     
     try:
-        # Use ORM for SQLite
+        # Debug: Check database connection
+        db_url = str(db.bind.url)
+        logger.info(f"Database URL type: {db_url[:20]}...")
+        
+        # Count total users
+        count_result = await db.execute(select(func.count()).select_from(User))
+        total_users = count_result.scalar()
+        logger.info(f"Total users in database: {total_users}")
+        
+        # Use ORM to find user
         result = await db.execute(select(User).where(User.email == form_data.username))
         user = result.scalar_one_or_none()
+        
+        if user:
+            logger.info(f"User found: {user.email}, checking password...")
+        else:
+            logger.info(f"No user found with email: {form_data.username}")
+            
     except Exception as e:
         logger.error(f"Database error during login for {form_data.username}: {e}")
         raise HTTPException(

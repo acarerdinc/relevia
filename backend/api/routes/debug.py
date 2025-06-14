@@ -7,6 +7,30 @@ from core.logging_config import logger
 
 router = APIRouter()
 
+@router.get("/debug/users")
+async def list_users(db: AsyncSession = Depends(get_db)):
+    """List all users in database - for debugging only"""
+    try:
+        from db.models import User
+        from sqlalchemy import select
+        
+        result = await db.execute(select(User))
+        users = result.scalars().all()
+        
+        return {
+            "total_users": len(users),
+            "users": [
+                {
+                    "email": user.email,
+                    "username": user.username,
+                    "hash_prefix": user.hashed_password[:20] + "..." if user.hashed_password else None
+                }
+                for user in users
+            ]
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
 @router.get("/debug/db-test")
 async def test_database(db: AsyncSession = Depends(get_db)):
     """Test database connection"""

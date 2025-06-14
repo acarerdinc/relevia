@@ -72,16 +72,13 @@ async def ensure_database_initialized():
                 logger.info(f"Database connection: {database_url}")
         
         # Create engine for this initialization
-        # For transaction pooler, we need to handle it differently
-        if "pooler.supabase.com:6543" in database_url:
-            # Transaction pooler doesn't support prepared statements
-            # Add statement_cache_size=0 to disable prepared statements
-            if "?" in database_url:
-                database_url += "&statement_cache_size=0"
-            else:
-                database_url += "?statement_cache_size=0"
+        engine_kwargs = {"echo": False}
         
-        engine = create_async_engine(database_url, echo=False)
+        # For Supabase transaction pooler, disable prepared statements
+        if "pooler.supabase.com:6543" in database_url:
+            engine_kwargs["connect_args"] = {"statement_cache_size": 0}
+        
+        engine = create_async_engine(database_url, **engine_kwargs)
         
         # Create tables
         async with engine.begin() as conn:

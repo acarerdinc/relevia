@@ -3,21 +3,15 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from core.config import settings
 
-# Configure database URL for transaction pooling if needed
+# Configure database URL and engine options
 database_url = settings.DATABASE_URL
-if "pooler.supabase.com:6543" in database_url and "statement_cache_size" not in database_url:
-    # Add statement_cache_size=0 for transaction pooler
-    if "?" in database_url:
-        database_url += "&statement_cache_size=0"
-    else:
-        database_url += "?statement_cache_size=0"
+engine_kwargs = {"echo": False if database_url.startswith("postgresql") else True}
 
-# Use echo=False in production to reduce logs
-is_production = database_url.startswith("postgresql")
-engine = create_async_engine(
-    database_url,
-    echo=not is_production,
-)
+# For Supabase transaction pooler, disable prepared statements
+if "pooler.supabase.com:6543" in database_url:
+    engine_kwargs["connect_args"] = {"statement_cache_size": 0}
+
+engine = create_async_engine(database_url, **engine_kwargs)
 
 AsyncSessionLocal = sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False

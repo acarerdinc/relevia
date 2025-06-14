@@ -2,17 +2,18 @@ from pydantic_settings import BaseSettings
 from typing import List, Optional
 import os
 
+# Check if running on Vercel
+is_vercel = os.environ.get("VERCEL", "0") == "1"
+
+# Determine database URL based on environment
+if is_vercel and not os.environ.get("POSTGRES_URL"):
+    default_database_url = "sqlite+aiosqlite:////tmp/relevia.db"
+else:
+    default_database_url = "sqlite+aiosqlite:///./relevia.db"
+
 class Settings(BaseSettings):
     # Database
-    # Check if running on Vercel
-    is_vercel = os.environ.get("VERCEL", "0") == "1"
-    
-    # Use PostgreSQL URL from environment or fallback to SQLite
-    # On Vercel, SQLite must be in /tmp directory
-    if is_vercel and not os.environ.get("POSTGRES_URL"):
-        DATABASE_URL: str = "sqlite+aiosqlite:////tmp/relevia.db"
-    else:
-        DATABASE_URL: str = os.environ.get("POSTGRES_URL", "sqlite+aiosqlite:///./relevia.db")
+    DATABASE_URL: str = os.environ.get("POSTGRES_URL", default_database_url)
     
     # Redis (optional, not used but may be in .env)
     REDIS_URL: Optional[str] = None

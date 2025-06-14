@@ -65,13 +65,14 @@ async def log_requests(request: Request, call_next):
     
     return response
 
-# CORS middleware
+# CORS middleware - MUST be added after all routes
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Include routers

@@ -29,9 +29,8 @@ if postgres_url:
         else:
             postgres_url += "?ssl=require"
         
-        # For transaction pooler, disable prepared statements
-        if ":6543" in postgres_url:
-            postgres_url += "&server_settings={'jit':'off'}"
+        # For transaction pooler, we'll need to handle prepared statements differently
+        # Don't add server_settings to URL - it needs to be passed to create_async_engine
 
 # Determine database URL based on environment
 if is_vercel and not postgres_url:

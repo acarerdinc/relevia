@@ -21,6 +21,9 @@ if is_postgresql and is_vercel:
         "echo": False,
         "pool_pre_ping": True,
         "poolclass": NullPool,  # Let PgBouncer handle pooling
+        "connect_args": {
+            "statement_cache_size": 0,  # Disable prepared statements for pgbouncer
+        }
     }
 else:
     # Standard configuration for local development

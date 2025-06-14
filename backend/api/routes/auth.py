@@ -100,9 +100,27 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     logger.info(f"Login attempt for: {form_data.username}")
     
     try:
-        # Use ORM to find user
-        result = await db.execute(select(User).where(User.email == form_data.username))
-        user = result.scalar_one_or_none()
+        # Use raw SQL to avoid prepared statement issues with pgbouncer
+        query = text("""
+            SELECT id, email, username, hashed_password, is_active 
+            FROM users 
+            WHERE email = :email
+            LIMIT 1
+        """)
+        result = await db.execute(query, {"email": form_data.username})
+        row = result.fetchone()
+        
+        if row:
+            # Manually create user object from row
+            user = type('User', (), {
+                'id': row[0],
+                'email': row[1],
+                'username': row[2],
+                'hashed_password': row[3],
+                'is_active': row[4]
+            })()
+        else:
+            user = None
             
     except Exception as e:
         logger.error(f"Database error during login for {form_data.username}: {e}")

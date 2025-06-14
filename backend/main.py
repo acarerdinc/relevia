@@ -5,7 +5,7 @@ import uvicorn
 import time
 import os
 
-from api.routes import health, quiz, topics, auth, progress, personalization, topic_requests, mastery
+from api.routes import health, quiz, topics, auth, progress, personalization, topic_requests, mastery, auth_simple
 from api.v1 import adaptive_learning
 from core.config import settings
 from core.logging_config import logger, performance_logger
@@ -90,6 +90,7 @@ app.add_middleware(
 # Include routers
 app.include_router(health.router, prefix="/api/v1/health", tags=["health"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(auth_simple.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(topics.router, prefix="/api/v1/topics", tags=["topics"])
 app.include_router(topic_requests.router, prefix="/api/v1/topics", tags=["topic_requests"])
 app.include_router(quiz.router, prefix="/api/v1/quiz", tags=["quiz"])

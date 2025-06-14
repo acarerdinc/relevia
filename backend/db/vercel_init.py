@@ -34,9 +34,17 @@ async def ensure_database_initialized():
         # Convert postgresql:// to postgresql+asyncpg:// for async support
         if database_url and database_url.startswith("postgresql://"):
             database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-            # Remove pgbouncer parameter if present
-            if "?pgbouncer=true" in database_url:
-                database_url = database_url.replace("?pgbouncer=true", "")
+            # Handle Supabase pooler URL parameters
+            if "pooler.supabase.com" in database_url:
+                # Remove pgbouncer parameter if present
+                if "?pgbouncer=true" in database_url:
+                    database_url = database_url.replace("?pgbouncer=true", "?")
+                # Add SSL mode if not present
+                if "sslmode=" not in database_url:
+                    if "?" in database_url:
+                        database_url += "&sslmode=require"
+                    else:
+                        database_url += "?sslmode=require"
         
         logger.info(f"Database URL scheme: {database_url.split('://')[0] if '://' in database_url else 'unknown'}")
         

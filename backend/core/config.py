@@ -11,9 +11,17 @@ postgres_url = os.environ.get("POSTGRES_URL")
 # Convert postgresql:// to postgresql+asyncpg:// for async support
 if postgres_url and postgres_url.startswith("postgresql://"):
     postgres_url = postgres_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    # Remove pgbouncer parameter if present (not compatible with asyncpg)
-    if "?pgbouncer=true" in postgres_url:
-        postgres_url = postgres_url.replace("?pgbouncer=true", "")
+    # Handle Supabase pooler URL parameters
+    if "pooler.supabase.com" in postgres_url:
+        # Remove pgbouncer parameter if present
+        if "?pgbouncer=true" in postgres_url:
+            postgres_url = postgres_url.replace("?pgbouncer=true", "?")
+        # Add SSL mode if not present
+        if "sslmode=" not in postgres_url:
+            if "?" in postgres_url:
+                postgres_url += "&sslmode=require"
+            else:
+                postgres_url += "?sslmode=require"
 
 # Determine database URL based on environment
 if is_vercel and not postgres_url:

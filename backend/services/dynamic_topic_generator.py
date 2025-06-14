@@ -464,8 +464,7 @@ concepts that cannot be learned together. Most topics at this level should NOT b
                     select(Topic).where(
                         Topic.name == subtopic_data['name'],
                         Topic.parent_id == parent_id
-                )
-                )
+                    )
                 )
                 subtopic_logger.debug(f"💾 [DB] Existence check completed")
                 

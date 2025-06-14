@@ -95,36 +95,42 @@ async def register(user_data: UserRegister, db: AsyncSession = Depends(get_db)):
     )
 
 @router.post("/login", response_model=Token)
-async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
     # OAuth2PasswordRequestForm uses 'username' field, but we'll treat it as email
     from core.logging_config import logger
-    from api.utils.auth_db import get_user_by_email
     
     logger.info(f"Login attempt for: {form_data.username}")
     
     try:
-        # Use direct database connection to avoid prepared statement issues
-        row = await get_user_by_email(form_data.username)
-        
-        if row:
-            user = User(
-                id=row['id'],
-                username=row['username'],
-                email=row['email'],
-                hashed_password=row['hashed_password']
-            )
-        else:
-            user = None
+        # Simple direct query approach
+        stmt = select(User).where(User.email == form_data.username)
+        result = await db.execute(stmt)
+        user = result.scalar_one_or_none()
     except Exception as e:
         logger.error(f"Database error during login for {form_data.username}: {str(e)}")
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
-        # Return generic error to avoid exposing database issues
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        # Try fallback with raw SQL
+        try:
+            query = text("SELECT * FROM users WHERE email = :email LIMIT 1")
+            result = await db.execute(query, {"email": form_data.username})
+            row = result.first()
+            if row:
+                user = User(
+                    id=row.id,
+                    username=row.username,
+                    email=row.email,
+                    hashed_password=row.hashed_password
+                )
+            else:
+                user = None
+        except Exception as e2:
+            logger.error(f"Fallback query also failed: {str(e2)}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
     
     if not user:
         logger.warning(f"User not found: {form_data.username}")

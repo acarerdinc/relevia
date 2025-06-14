@@ -6,8 +6,9 @@ An intelligent learning platform that uses **Multi-Armed Bandit algorithms** and
 
 - **Frontend**: https://relevia.vercel.app
 - **Backend API**: https://relevia-backend.vercel.app
+- **API Health Check**: https://relevia-backend.vercel.app/api/v1/health
 
-Automatic deployment is configured from the `main` branch.
+Automatic deployment is configured from the `main` branch. Every push to `main` triggers deployment.
 
 ## 🌟 Key Features
 

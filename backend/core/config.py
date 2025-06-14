@@ -10,7 +10,11 @@ is_vercel = os.environ.get("VERCEL", "0") == "1"
 postgres_url = os.environ.get("POSTGRES_URL")
 database_url_env = os.environ.get("DATABASE_URL")
 
-if is_vercel and (postgres_url or database_url_env):
+# ALWAYS use PostgreSQL on Vercel, fail if not configured
+if is_vercel:
+    if not (postgres_url or database_url_env):
+        raise ValueError("POSTGRES_URL or DATABASE_URL must be set on Vercel")
+    
     # Use PostgreSQL on Vercel
     default_database_url = postgres_url or database_url_env
     # Convert postgres:// to postgresql:// for SQLAlchemy
@@ -19,7 +23,7 @@ if is_vercel and (postgres_url or database_url_env):
     # Add asyncpg driver for async operations
     if "postgresql://" in default_database_url and "+asyncpg" not in default_database_url:
         default_database_url = default_database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    print(f"[CONFIG] Using PostgreSQL database on Vercel")
+    print(f"[CONFIG] Using PostgreSQL database on Vercel: {default_database_url[:30]}...")
 else:
     # Local development - use SQLite
     default_database_url = "sqlite+aiosqlite:///./relevia.db"

@@ -23,7 +23,7 @@ class LearningDashboardService:
         Generate comprehensive learning dashboard for user
         """
         try:
-            # Get user progress across all topics
+            # Get user progress across all topics (sequential to avoid DB concurrency issues)
             progress_data = await self._get_user_progress_summary(db, user_id)
             
             # Get learning activity over time
@@ -38,6 +38,9 @@ class LearningDashboardService:
             # Get recommended next steps
             recommendations = await self._get_learning_recommendations(db, user_id)
             
+            # Get adaptive insights
+            adaptive_insights = await self._get_adaptive_insights(db, user_id)
+            
             return {
                 "user_id": user_id,
                 "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -46,7 +49,7 @@ class LearningDashboardService:
                 "interests": interest_data,
                 "recent_unlocks": unlocked_topics,
                 "recommendations": recommendations,
-                "adaptive_insights": await self._get_adaptive_insights(db, user_id)
+                "adaptive_insights": adaptive_insights
             }
             
         except Exception as e:

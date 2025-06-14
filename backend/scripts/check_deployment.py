@@ -21,3 +21,4 @@ if 'sqlite' in settings.DATABASE_URL.lower():
     print("Please set TURSO_DATABASE_URL and TURSO_AUTH_TOKEN environment variables.")
 else:
     print("\n✓ Using persistent database (Turso)")
+print(f"Deployment timestamp: {os.environ.get('VERCEL_DEPLOYMENT_ID', 'local')}")

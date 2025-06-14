@@ -95,28 +95,23 @@ async def register(user_data: UserRegister, db: AsyncSession = Depends(get_db)):
     )
 
 @router.post("/login", response_model=Token)
-async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
+async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     # OAuth2PasswordRequestForm uses 'username' field, but we'll treat it as email
     from core.logging_config import logger
+    from api.utils.auth_db import get_user_by_email
+    
     logger.info(f"Login attempt for: {form_data.username}")
     
     try:
-        # Use raw SQL to avoid prepared statement issues
-        query = text("""
-            SELECT id, username, email, hashed_password 
-            FROM users 
-            WHERE email = :email
-            LIMIT 1
-        """)
-        result = await db.execute(query, {"email": form_data.username})
-        row = result.first()
+        # Use direct database connection to avoid prepared statement issues
+        row = await get_user_by_email(form_data.username)
         
         if row:
             user = User(
-                id=row.id,
-                username=row.username,
-                email=row.email,
-                hashed_password=row.hashed_password
+                id=row['id'],
+                username=row['username'],
+                email=row['email'],
+                hashed_password=row['hashed_password']
             )
         else:
             user = None

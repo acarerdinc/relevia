@@ -9,18 +9,15 @@ is_vercel = os.environ.get("VERCEL", "0") == "1"
 turso_url = os.environ.get("TURSO_DATABASE_URL")
 turso_token = os.environ.get("TURSO_AUTH_TOKEN")
 
-if turso_url and turso_token:
-    # Use Turso database with authentication
-    # Convert libsql:// URL to HTTP URL for remote SQLite access
-    if turso_url.startswith("libsql://"):
-        # Extract the hostname from libsql://hostname format
-        turso_host = turso_url.replace("libsql://", "")
-        # Create HTTP URL for Turso
-        turso_http_url = f"https://{turso_host}"
-        # Use aiosqlite with remote URL
-        default_database_url = f"sqlite+aiosqlite:///?url={turso_http_url}&authToken={turso_token}"
-    else:
-        default_database_url = f"{turso_url}?authToken={turso_token}"
+if turso_url and turso_token and is_vercel:
+    # On Vercel with Turso configured, use local SQLite as a workaround
+    # Turso's libsql driver doesn't support async operations needed by FastAPI
+    default_database_url = "sqlite+aiosqlite:////tmp/relevia.db"
+    print(f"[CONFIG] Using local SQLite on Vercel (Turso async incompatibility workaround)")
+    print(f"[CONFIG] Turso URL configured: {turso_url[:50]}...")
+elif turso_url and turso_token:
+    # Local development with Turso - use the URL as-is
+    default_database_url = f"{turso_url}?authToken={turso_token}"
     print(f"[CONFIG] Using Turso database: {turso_url[:50]}...")
 else:
     # Fallback to SQLite for local development

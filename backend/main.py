@@ -18,10 +18,10 @@ async def lifespan(app: FastAPI):
     
     # Check if running on Vercel
     if os.environ.get("VERCEL") == "1":
-        # Skip initialization - database is already set up
-        logger.info("Running on Vercel - skipping database initialization")
-        if is_turso:
-            logger.info("Using Turso database")
+        logger.info("Running on Vercel - initializing SQLite database")
+        # Initialize database on Vercel
+        from db.init_vercel_db import init_vercel_database
+        await init_vercel_database()
         # from db.vercel_init import ensure_database_initialized
         # await ensure_database_initialized()
     else:

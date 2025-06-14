@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-from db.database import get_db, is_turso
+from db.database import get_db
 from core.logging_config import logger
 
 router = APIRouter()
@@ -11,7 +11,7 @@ router = APIRouter()
 async def test_database(db: AsyncSession = Depends(get_db)):
     """Test database connection"""
     try:
-        logger.info(f"Testing database connection. Is Turso: {is_turso}")
+        logger.info("Testing database connection")
         
         # Test basic connection
         result = await db.execute(text("SELECT 1"))
@@ -31,7 +31,7 @@ async def test_database(db: AsyncSession = Depends(get_db)):
             
             return {
                 "status": "ok", 
-                "is_turso": is_turso,
+                "database_type": "SQLite",
                 "users_count": count,
                 "user_emails": emails
             }

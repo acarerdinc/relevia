@@ -102,32 +102,9 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     logger.info(f"Login attempt for: {form_data.username}")
     
     try:
-        if is_turso:
-            # Use raw SQL for Turso
-            query = text("""
-                SELECT id, email, username, hashed_password, is_active, created_at 
-                FROM users 
-                WHERE email = :email
-            """)
-            result = await db.execute(query, {"email": form_data.username})
-            row = result.fetchone()
-            
-            if row:
-                # Create a user-like object
-                user = type('User', (), {
-                    'id': row[0],
-                    'email': row[1],
-                    'username': row[2],
-                    'hashed_password': row[3],
-                    'is_active': row[4],
-                    'created_at': row[5]
-                })()
-            else:
-                user = None
-        else:
-            # Use ORM for regular databases
-            result = await db.execute(select(User).where(User.email == form_data.username))
-            user = result.scalar_one_or_none()
+        # Use ORM for SQLite
+        result = await db.execute(select(User).where(User.email == form_data.username))
+        user = result.scalar_one_or_none()
     except Exception as e:
         logger.error(f"Database error during login for {form_data.username}: {e}")
         raise HTTPException(

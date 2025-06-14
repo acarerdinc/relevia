@@ -7,40 +7,29 @@ from core.config import settings
 # Configure database URL and engine options
 database_url = settings.DATABASE_URL
 
-# Check if we're using Turso/libsql
-is_turso = database_url.startswith("libsql://") or "turso.io" in database_url
+# We're using SQLite for everything now (including on Vercel)
+is_turso = False
 
 Base = declarative_base()
 
-if is_turso:
-    # Use Turso async wrapper
-    from .turso_async import get_turso_session
-    
-    async def get_db():
-        async for session in get_turso_session(database_url):
+# Use standard async engine for SQLite
+engine_kwargs = {
+    "echo": False,  # Disable SQL logging for production
+}
+
+# For PostgreSQL connections, use pool_pre_ping
+if database_url.startswith("postgresql"):
+    engine_kwargs["pool_pre_ping"] = True
+
+engine = create_async_engine(database_url, **engine_kwargs)
+
+AsyncSessionLocal = sessionmaker(
+    engine, class_=AsyncSession, expire_on_commit=False
+)
+
+async def get_db():
+    async with AsyncSessionLocal() as session:
+        try:
             yield session
-    
-    # Create a dummy engine for compatibility
-    engine = None
-else:
-    # Use standard async engine for SQLite/PostgreSQL
-    engine_kwargs = {
-        "echo": False,  # Disable SQL logging for production
-    }
-    
-    # For PostgreSQL connections, use pool_pre_ping
-    if database_url.startswith("postgresql"):
-        engine_kwargs["pool_pre_ping"] = True
-    
-    engine = create_async_engine(database_url, **engine_kwargs)
-    
-    AsyncSessionLocal = sessionmaker(
-        engine, class_=AsyncSession, expire_on_commit=False
-    )
-    
-    async def get_db():
-        async with AsyncSessionLocal() as session:
-            try:
-                yield session
-            finally:
-                await session.close()
+        finally:
+            await session.close()

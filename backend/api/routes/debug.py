@@ -15,17 +15,19 @@ async def test_database(db: AsyncSession = Depends(get_db)):
         
         # Test basic connection
         result = await db.execute(text("SELECT 1"))
-        logger.info("Database connection successful")
+        test_val = result.scalar()
+        logger.info(f"Database connection successful, test value: {test_val}")
         
         # Check if users table exists
         try:
-            users_result = await db.execute(text("SELECT COUNT(*) FROM users"))
+            users_result = await db.execute(text("SELECT COUNT(*) as count FROM users"))
             count = users_result.scalar()
             logger.info(f"Users table has {count} users")
             
             # Get user emails
             emails_result = await db.execute(text("SELECT email FROM users"))
-            emails = [row[0] for row in emails_result.fetchall()]
+            rows = emails_result.fetchall()
+            emails = [row[0] if isinstance(row, tuple) else row['email'] for row in rows]
             
             return {
                 "status": "ok", 

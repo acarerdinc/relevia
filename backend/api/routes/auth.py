@@ -98,11 +98,36 @@ async def register(user_data: UserRegister, db: AsyncSession = Depends(get_db)):
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
     # OAuth2PasswordRequestForm uses 'username' field, but we'll treat it as email
     from core.logging_config import logger
+    from db.database import is_turso
     logger.info(f"Login attempt for: {form_data.username}")
     
     try:
-        result = await db.execute(select(User).where(User.email == form_data.username))
-        user = result.scalar_one_or_none()
+        if is_turso:
+            # Use raw SQL for Turso
+            query = text("""
+                SELECT id, email, username, hashed_password, is_active, created_at 
+                FROM users 
+                WHERE email = :email
+            """)
+            result = await db.execute(query, {"email": form_data.username})
+            row = result.fetchone()
+            
+            if row:
+                # Create a user-like object
+                user = type('User', (), {
+                    'id': row[0],
+                    'email': row[1],
+                    'username': row[2],
+                    'hashed_password': row[3],
+                    'is_active': row[4],
+                    'created_at': row[5]
+                })()
+            else:
+                user = None
+        else:
+            # Use ORM for regular databases
+            result = await db.execute(select(User).where(User.email == form_data.username))
+            user = result.scalar_one_or_none()
     except Exception as e:
         logger.error(f"Database error during login for {form_data.username}: {e}")
         raise HTTPException(

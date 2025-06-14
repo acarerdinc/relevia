@@ -13,8 +13,8 @@ is_turso = database_url.startswith("libsql://") or "turso.io" in database_url
 Base = declarative_base()
 
 if is_turso:
-    # Use Turso adapter for sync-to-async operations
-    from .turso_adapter import get_turso_session
+    # Use Turso async wrapper
+    from .turso_async import get_turso_session
     
     async def get_db():
         async for session in get_turso_session(database_url):

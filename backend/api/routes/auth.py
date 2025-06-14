@@ -101,8 +101,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     
     try:
         # Get the raw connection to bypass SQLAlchemy's prepared statements
-        conn = await db.connection()
-        raw_conn = conn.connection._connection  # Access asyncpg connection directly
+        raw_conn = await db.get_raw_connection()
         
         # Execute query directly on asyncpg connection
         row = await raw_conn.fetchrow(

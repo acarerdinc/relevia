@@ -3,9 +3,11 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from core.config import settings
 
+# Use echo=False in production to reduce logs
+is_production = settings.DATABASE_URL.startswith("postgresql")
 engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=True,
+    echo=not is_production,
 )
 
 AsyncSessionLocal = sessionmaker(

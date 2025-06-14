@@ -31,6 +31,15 @@ async def ensure_database_initialized():
             else:
                 database_url = "sqlite+aiosqlite:///./relevia.db"
         
+        # Convert postgresql:// to postgresql+asyncpg:// for async support
+        if database_url and database_url.startswith("postgresql://"):
+            database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            # Remove pgbouncer parameter if present
+            if "?pgbouncer=true" in database_url:
+                database_url = database_url.replace("?pgbouncer=true", "")
+        
+        logger.info(f"Database URL scheme: {database_url.split('://')[0] if '://' in database_url else 'unknown'}")
+        
         # Create engine for this initialization
         engine = create_async_engine(database_url, echo=False)
         

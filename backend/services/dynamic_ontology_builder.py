@@ -321,65 +321,12 @@ class DynamicOntologyBuilder:
 CONTEXT: We're building an infinite, adaptive AI knowledge tree that goes from general to specific. Here's the hierarchical structure we follow:
 
 Level 0: Root (AI)
-Level 1: Major domains (Mathematical Foundations, Machine Learning, Deep Learning, NLP, Computer Vision, MLOps, etc.)
+Level 1: Major domains (varies by subject area - could be foundational concepts, methodologies, applications, etc.)
 Level 2: Sub-domains (Supervised Learning, Unsupervised Learning, Linear Algebra, Probability, etc.)
 Level 3: Specific techniques (Regression, Classification, Clustering, CNN, RNN, etc.)
 Level 4+: Algorithms and implementations (Linear Regression, SVD, Adam, BERT, etc.)
 
-EXAMPLE HIERARCHICAL STRUCTURE (use as reference):
-{{
-  "ai": {{
-    "name": "Artificial Intelligence",
-    "children": [
-      {{
-        "name": "Mathematical Foundations",
-        "children": [
-          {{
-            "name": "Linear Algebra",
-            "children": ["Vectors", "Matrices", "Eigen-Decomposition", "SVD"]
-          }},
-          {{
-            "name": "Probability & Statistics", 
-            "children": ["Probability Distributions", "Bayes Rule", "Hypothesis Testing"]
-          }},
-          {{
-            "name": "Optimization",
-            "children": ["Convex Optimization", "Gradient Descent Family"]
-          }}
-        ]
-      }},
-      {{
-        "name": "Machine Learning",
-        "children": [
-          {{
-            "name": "Supervised Learning",
-            "children": ["Regression", "Classification", "Model Evaluation"]
-          }},
-          {{
-            "name": "Unsupervised Learning", 
-            "children": ["Clustering", "Dimensionality Reduction", "Generative Models"]
-          }},
-          {{
-            "name": "Reinforcement Learning",
-            "children": ["Value-Based Methods", "Policy-Based Methods", "Actor-Critic"]
-          }}
-        ]
-      }},
-      {{
-        "name": "Deep Learning",
-        "children": ["Frameworks", "Architectures", "Training Paradigms"]
-      }},
-      {{
-        "name": "Natural Language Processing",
-        "children": ["Language Models", "Core Tasks", "Embeddings"]
-      }},
-      {{
-        "name": "Computer Vision", 
-        "children": ["Vision Tasks", "Vision Models"]
-      }}
-    ]
-  }}
-}}
+Use sound educational principles to break down topics into appropriate subtopics. Focus on creating logical, hierarchical structures that follow natural learning progressions without being constrained by specific examples.
 
 PARENT TOPIC: {parent_topic_name}
 CURRENT LEVEL: {parent_level}
@@ -535,7 +482,7 @@ Generate child topics that maintain educational progression and allow for infini
             # For LLM requests, always check these important topics
             important_topics = [
                 "Modern AI: Machine Learning Revolution",
-                "Introduction to Neural Networks and Deep Learning",
+                "Introduction to Neural Networks",
                 "Natural Language Processing"
             ]
             for topic in important_topics:

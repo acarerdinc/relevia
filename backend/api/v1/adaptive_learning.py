@@ -4,7 +4,7 @@ Adaptive Learning API - Simplified endpoints for exploration/exploitation learni
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Union
 
 from db.database import get_db
 from services.adaptive_quiz_service import adaptive_quiz_service
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/adaptive", tags=["adaptive_learning"])
 
 class AdaptiveAnswerRequest(BaseModel):
     quiz_question_id: int
-    answer: Optional[str] = None
+    answer: Union[str, int, None] = None  # Allow string, int, or None
     time_spent: int = 0
     action: str = "answer"  # answer, teach_me, skip
 
@@ -132,7 +132,8 @@ async def continue_learning(
         
         # Start prefetching second question immediately for faster UX
         import asyncio
-        asyncio.create_task(adaptive_quiz_service._prefetch_next_question(user_id, session_id))
+        from services.question_cache_service import question_cache_service
+        asyncio.create_task(question_cache_service.prefetch_next_question(user_id, session_id))
         
         # Return combined session + question data
         return {

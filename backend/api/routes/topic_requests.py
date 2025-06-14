@@ -16,6 +16,11 @@ class TopicNavigationRequest(BaseModel):
     topic_id: int
     user_id: int = 1
 
+class InterestUpdateRequest(BaseModel):
+    topic_id: int
+    user_id: int = 1
+    action: str = "start_learning"
+
 @router.post("/request-learning")
 async def request_learning_topic(
     request: LearningRequest, 
@@ -133,4 +138,43 @@ async def get_learning_suggestions(
         raise HTTPException(
             status_code=500,
             detail="Unable to get learning suggestions"
+        )
+
+@router.post("/increase-interest")
+async def increase_topic_interest(
+    request: InterestUpdateRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Increase user's interest in a topic when they actively choose to start learning it
+    """
+    
+    try:
+        # Import the dynamic ontology service
+        from services.dynamic_ontology_service import dynamic_ontology_service
+        
+        logger.info(f"Starting interest update for user {request.user_id}, topic {request.topic_id}, action {request.action}")
+        
+        # Update user interest based on starting learning action
+        await dynamic_ontology_service.update_user_interest(
+            db=db,
+            user_id=request.user_id,
+            topic_id=request.topic_id,
+            action=request.action,
+            time_spent=30  # Give some base time for actively choosing to learn
+        )
+        
+        logger.info(f"Successfully increased interest for user {request.user_id} in topic {request.topic_id}")
+        
+        return {
+            "success": True,
+            "topic_id": request.topic_id,
+            "message": "Successfully increased topic interest"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error increasing interest for topic {request.topic_id}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unable to increase topic interest: {str(e)}"
         )

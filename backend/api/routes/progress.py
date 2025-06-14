@@ -51,30 +51,31 @@ async def get_user_progress(user_id: int, db: AsyncSession = Depends(get_db)):
         
         # Default values for topics without progress
         is_unlocked = False
-        mastery_level = "not_started"
-        accuracy = 0.0
+        mastery_level = "novice"
+        current_mastery_level = "novice"
         questions_answered = 0
         correct_answers = 0
         skill_level = 0.0
         confidence = 0.0
         unlocked_at = None
+        mastery_questions_answered = {"novice": 0, "competent": 0, "proficient": 0, "expert": 0, "master": 0}
         
         if progress:
-            if progress.questions_answered > 0:
-                accuracy = progress.correct_answers / progress.questions_answered
-                total_questions += progress.questions_answered
-                total_correct += progress.correct_answers
+            total_questions += progress.questions_answered or 0
+            total_correct += progress.correct_answers or 0
             
             if progress.is_unlocked:
                 topics_unlocked += 1
             
             is_unlocked = progress.is_unlocked
-            mastery_level = progress.mastery_level
-            questions_answered = progress.questions_answered
-            correct_answers = progress.correct_answers
-            skill_level = progress.skill_level
-            confidence = progress.confidence
+            mastery_level = progress.mastery_level or "novice"
+            current_mastery_level = progress.current_mastery_level or "novice"
+            questions_answered = progress.questions_answered or 0
+            correct_answers = progress.correct_answers or 0
+            skill_level = progress.skill_level or 0.0
+            confidence = progress.confidence or 0.0
             unlocked_at = progress.unlocked_at.isoformat() if progress.unlocked_at else None
+            mastery_questions_answered = progress.mastery_questions_answered or {"novice": 0, "competent": 0, "proficient": 0, "expert": 0, "master": 0}
         else:
             # For root topics (parent_id is None), unlock them by default
             if topic.parent_id is None:
@@ -90,18 +91,29 @@ async def get_user_progress(user_id: int, db: AsyncSession = Depends(get_db)):
             "difficulty_max": topic.difficulty_max,
             "is_unlocked": is_unlocked,
             "mastery_level": mastery_level,
-            "accuracy": accuracy,
+            "current_mastery_level": current_mastery_level,
             "questions_answered": questions_answered,
             "correct_answers": correct_answers,
             "skill_level": skill_level,
             "confidence": confidence,
-            "unlocked_at": unlocked_at
+            "unlocked_at": unlocked_at,
+            "mastery_questions_answered": mastery_questions_answered
         })
     
-    # Calculate overall accuracy
-    overall_accuracy = 0
-    if total_questions > 0:
-        overall_accuracy = total_correct / total_questions
+    # Calculate overall mastery progress (average mastery level across unlocked topics)
+    mastery_weights = {"novice": 0, "competent": 1, "proficient": 2, "expert": 3, "master": 4}
+    total_mastery_score = 0
+    unlocked_topics_count = 0
+    
+    for topic_data in topics_data:
+        if topic_data["is_unlocked"]:
+            unlocked_topics_count += 1
+            mastery_level = topic_data["current_mastery_level"]
+            total_mastery_score += mastery_weights.get(mastery_level, 0)
+    
+    overall_mastery_progress = 0
+    if unlocked_topics_count > 0:
+        overall_mastery_progress = total_mastery_score / (unlocked_topics_count * 4)  # Normalize to 0-1 scale
     
     # Get learning streak
     try:
@@ -124,7 +136,7 @@ async def get_user_progress(user_id: int, db: AsyncSession = Depends(get_db)):
     
     return {
         "total_topics_unlocked": topics_unlocked,
-        "overall_accuracy": overall_accuracy,
+        "overall_mastery_progress": overall_mastery_progress,
         "total_questions_answered": total_questions,
         "current_streak": current_streak,
         "learning_velocity": learning_velocity,

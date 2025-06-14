@@ -41,7 +41,10 @@
       "Bash(brew install:*)",
       "Bash(gh auth:*)",
       "Bash(git pull:*)",
-      "Bash(touch:*)"
+      "Bash(touch:*)",
+      "Bash(sqlite3:*)",
+      "Bash(psql:*)",
+      "Bash(sed:*)"
     ],
     "deny": []
   }

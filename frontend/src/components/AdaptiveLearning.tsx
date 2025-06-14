@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { LearningRequestInput } from './LearningRequestInput';
 
 interface LearningDashboard {
@@ -38,6 +38,7 @@ interface Question {
   difficulty: number;
   topic_name: string;
   selection_strategy: string;
+  mastery_level?: string;
   session_progress?: {
     questions_answered: number;
     session_accuracy: number;
@@ -45,35 +46,27 @@ interface Question {
   };
   topic_progress?: {
     topic_name: string;
+    skill_level: number;
+    confidence: number;
+    mastery_level: string;
+    questions_answered: number;
     proficiency: {
-      current_accuracy: number;
-      required_accuracy: number;
-      progress_percent: number;
+      mastery_level: string;
       questions_answered: number;
-      min_questions_required: number;
-      questions_progress_percent: number;
-    };
-    interest: {
-      current_score: number;
-      progress_percent: number;
-      level: string;
-    };
-    unlock: {
-      ready: boolean;
-      overall_progress_percent: number;
-      next_threshold: {
-        level: string;
-        accuracy: number;
-      };
+      progress_to_next: number;
+      can_unlock_subtopics: boolean;
     };
   };
 }
 
 interface AdaptiveLearningProps {
   onViewChange: (view: string) => void;
+  startSession?: {sessionId: number, topicId: number} | null;
+  onSessionUsed?: () => void;
+  onTopicsUnlocked?: () => void;
 }
 
-export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
+export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, onTopicsUnlocked }: AdaptiveLearningProps) {
   const [dashboard, setDashboard] = useState<LearningDashboard | null>(null);
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
   const [sessionId, setSessionId] = useState<number | null>(null);
@@ -83,10 +76,45 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
   const [questionCount, setQuestionCount] = useState(0);
   const [topicCreationResult, setTopicCreationResult] = useState<any>(null);
   const [showTopicCreationFeedback, setShowTopicCreationFeedback] = useState(false);
+  const [isFocusedSession, setIsFocusedSession] = useState(false);
+  const processedStartSessionRef = useRef<{sessionId: number, topicId: number} | null>(null);
 
   useEffect(() => {
     loadDashboard();
   }, []);
+
+  // Handle starting a session passed from ProgressDashboard
+  useEffect(() => {
+    if (startSession && 
+        !sessionId && 
+        (!processedStartSessionRef.current || 
+         processedStartSessionRef.current.sessionId !== startSession.sessionId)) {
+      
+      console.log('🎯 Starting session from ProgressDashboard:', startSession);
+      
+      // Mark this session as processed to prevent double execution
+      processedStartSessionRef.current = startSession;
+      
+      setSessionId(startSession.sessionId);
+      setIsFocusedSession(true); // Mark this as a focused session
+      
+      // Get the first question for this session (focused session)
+      getNextQuestion(startSession.sessionId, true);
+      
+      // Clear the startSession from parent to prevent re-triggering
+      if (onSessionUsed) {
+        onSessionUsed();
+      }
+    }
+  }, [startSession, sessionId, onSessionUsed]); // Keep all dependencies for React compliance
+
+  // Helper function to reset session state
+  const resetSession = () => {
+    setSessionId(null);
+    setCurrentQuestion(null);
+    setIsFocusedSession(false);
+    processedStartSessionRef.current = null; // Reset the processed session ref
+  };
 
   const loadDashboard = async () => {
     try {
@@ -160,6 +188,7 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
 
   const startLearning = async () => {
     setIsLoading(true);
+    setIsFocusedSession(false); // This is adaptive learning, not focused
     try {
       const response = await fetch('http://localhost:8000/api/v1/adaptive/continue/1');
       const data = await response.json();
@@ -170,21 +199,25 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
         setQuestionCount(1);
       } else if (data.session_id) {
         setSessionId(data.session_id);
-        await getNextQuestion(data.session_id);
+        await getNextQuestion(data.session_id, false); // Explicitly use adaptive endpoint
       }
     } catch (error) {
       console.error('Failed to start learning:', error);
-      setSessionId(null); // Reset session on start error
-      setCurrentQuestion(null);
+      resetSession(); // Reset session on start error
     } finally {
       setIsLoading(false);
     }
   };
 
 
-  const getNextQuestion = async (sessionId: number) => {
+  const getNextQuestion = async (sessionId: number, isFocusedSession: boolean = false) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/adaptive/question/${sessionId}`);
+      // Use focused quiz endpoint if this is a session started from ProgressDashboard
+      const endpoint = isFocusedSession 
+        ? `http://localhost:8000/api/v1/quiz/question/${sessionId}`
+        : `http://localhost:8000/api/v1/adaptive/question/${sessionId}`;
+      
+      const response = await fetch(endpoint);
       
       if (!response.ok) {
         setCurrentQuestion(null);
@@ -196,8 +229,7 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
       
       if (data.error) {
         console.log('No more questions available, resetting session');
-        setCurrentQuestion(null);
-        setSessionId(null); // Reset session so Continue Learning works again
+        resetSession(); // Reset session so Continue Learning works again
         await loadDashboard(); // Refresh dashboard
       } else {
         setCurrentQuestion(data);
@@ -207,8 +239,7 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
       setIsLoading(false);
     } catch (error) {
       console.error('Failed to get question:', error);
-      setCurrentQuestion(null);
-      setSessionId(null); // Reset session on error too
+      resetSession(); // Reset session on error too
       await loadDashboard();
       setIsLoading(false);
     }
@@ -219,11 +250,15 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
 
     setIsLoading(true);
     try {
-      // Use adaptive endpoint if available, otherwise traditional
-      const isAdaptive = currentQuestion.selection_strategy !== 'traditional';
-      const endpoint = isAdaptive 
-        ? 'http://localhost:8000/api/v1/adaptive/answer'
-        : 'http://localhost:8000/api/v1/quiz/answer';
+      // Determine endpoint based on selection strategy
+      const isFocused = currentQuestion.selection_strategy === 'focused';
+      const isAdaptive = currentQuestion.selection_strategy !== 'traditional' && !isFocused;
+      
+      const endpoint = isFocused 
+        ? 'http://localhost:8000/api/v1/quiz/answer'
+        : isAdaptive 
+          ? 'http://localhost:8000/api/v1/adaptive/answer'
+          : 'http://localhost:8000/api/v1/quiz/answer';
       
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -246,6 +281,10 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
       // Refresh dashboard if topics were unlocked
       if (result.unlocked_topics?.length > 0) {
         setTimeout(() => loadDashboard(), 1000);
+        // Notify parent component to refresh tree view
+        if (onTopicsUnlocked) {
+          onTopicsUnlocked();
+        }
       }
 
     } catch (error) {
@@ -314,7 +353,7 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
         setIsLoading(false);
       } catch (error) {
         console.error('Failed to start learning new topic:', error);
-        alert(`Failed to start learning: ${error.message}. The topic has been created and you can access it from the main Continue Learning button.`);
+        alert(`Failed to start learning: ${error instanceof Error ? error.message : 'Unknown error'}. The topic has been created and you can access it from the main Continue Learning button.`);
         setIsLoading(false);
       }
     }
@@ -342,13 +381,26 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
                 Topic: {currentQuestion.topic_name} • Strategy: {currentQuestion.selection_strategy}
               </p>
             </div>
-            <div className="text-right">
-              <p className="text-sm font-medium text-gray-900 dark:text-white">
-                Infinite Learning
-              </p>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Session accuracy: {formatPercentage(currentQuestion.session_progress?.session_accuracy || 0)}%
-              </p>
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                  Infinite Learning
+                </p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Session accuracy: {formatPercentage(currentQuestion.session_progress?.session_accuracy || 0)}%
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  resetSession();
+                  setQuestionCount(0);
+                  setShowFeedback(false);
+                }}
+                className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                title="Exit to main page"
+              >
+                ← Exit
+              </button>
             </div>
           </div>
         </div>
@@ -373,6 +425,49 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
                 <p className="leading-relaxed">{feedback.explanation}</p>
               </div>
               
+              {/* Mastery Progress Info */}
+              {feedback?.mastery_advancement && (
+                <div className="mb-4 p-4 rounded-lg bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 border border-purple-200 dark:border-purple-800">
+                  <div className="text-center">
+                    <span className="text-sm font-medium text-purple-800 dark:text-purple-200">
+                      Mastery Progress
+                    </span>
+                    <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
+                      {feedback.mastery_advancement.questions_at_level} question{feedback.mastery_advancement.questions_at_level !== 1 ? 's' : ''} answered at {feedback.mastery_advancement.current_level} level
+                    </p>
+                    {!feedback.mastery_advancement.advanced && feedback.mastery_advancement.questions_needed > 0 && (
+                      <p className="text-xs text-purple-600 dark:text-purple-400">
+                        {feedback.mastery_advancement.questions_needed} more correct answers needed for {(() => {
+                          const currentLevel = feedback.mastery_advancement.current_level.toLowerCase();
+                          const nextLevel: {[key: string]: string} = {
+                            'novice': 'Competent',
+                            'competent': 'Proficient', 
+                            'proficient': 'Expert',
+                            'expert': 'Master'
+                          };
+                          return nextLevel[currentLevel] || 'next';
+                        })()} level
+                      </p>
+                    )}
+                    {!feedback.mastery_advancement.advanced && feedback.mastery_advancement.questions_needed === 0 && feedback.mastery_advancement.current_level !== 'master' && (
+                      <p className="text-xs text-green-600 dark:text-green-400">
+                        ✨ Ready to advance! Keep answering correctly to level up!
+                      </p>
+                    )}
+                    {feedback.mastery_advancement.advanced && (
+                      <div className="mt-2">
+                        <span className="text-sm font-bold text-green-600 dark:text-green-400">
+                          🎉 Level Up!
+                        </span>
+                        <p className="text-xs text-green-600 dark:text-green-400">
+                          {feedback.mastery_advancement.old_level} → {feedback.mastery_advancement.new_level}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {feedback.unlocked_topics?.length > 0 && (
                 <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4 mb-4">
                   <h4 className="font-semibold text-green-800 dark:text-green-200 mb-2">
@@ -391,7 +486,7 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
                   setShowFeedback(false);
                   setIsLoading(true);
                   if (sessionId) {
-                    getNextQuestion(sessionId);
+                    getNextQuestion(sessionId, isFocusedSession);
                   }
                 }}
                 className="mt-6 px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
@@ -407,20 +502,37 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
               
               <div className="space-y-3 mb-6">
                 {(currentQuestion.options || []).map((option, index) => {
-                  // Clean option text by removing any existing letter prefixes (A., B., etc.)
-                  const cleanOption = option.replace(/^[A-Z]\.\s*/, '');
+                  // Clean option text by removing any existing letter prefixes (A., B., etc.) and parentheses
+                  const cleanOption = option.replace(/^[A-Z]\.?\s*[A-Z]\)\s*/, '').replace(/^[A-Z]\.\s*/, '').replace(/^[A-Z]\)\s*/, '');
+                  
+                  // Debug mode highlighting
+                  const isDebugCorrect = currentQuestion.debug_correct_index === index;
                   
                   return (
                     <button
                       key={index}
-                      onClick={() => submitAnswer(option, 'answer')}
+                      onClick={() => submitAnswer(index.toString(), 'answer')}
                       disabled={isLoading}
-                      className="w-full text-left p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 dark:hover:border-blue-600 transition-colors disabled:opacity-50"
+                      className={`w-full text-left p-4 border rounded-lg transition-colors disabled:opacity-50 ${
+                        isDebugCorrect
+                          ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 ring-2 ring-emerald-200 dark:ring-emerald-800'
+                          : 'border-gray-200 dark:border-gray-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 dark:hover:border-blue-600'
+                      }`}
                     >
-                      <span className="font-medium text-blue-600 dark:text-blue-400 mr-3">
-                        {String.fromCharCode(65 + index)}.
-                      </span>
-                      {cleanOption}
+                      <div className="flex items-center">
+                        <span className={`font-medium mr-3 ${
+                          isDebugCorrect 
+                            ? 'text-emerald-600 dark:text-emerald-400' 
+                            : 'text-blue-600 dark:text-blue-400'
+                        }`}>
+                          {String.fromCharCode(65 + index)}.
+                        </span>
+                        {cleanOption}
+                        {/* Debug mode indicator */}
+                        {isDebugCorrect && (
+                          <span className="ml-auto text-emerald-600 dark:text-emerald-400 font-bold">🎯</span>
+                        )}
+                      </div>
                     </button>
                   );
                 })}
@@ -448,105 +560,187 @@ export function AdaptiveLearning({ onViewChange }: AdaptiveLearningProps) {
           )}
         </div>
 
-        {/* Topic Progress Bars - Bottom */}
+        {/* Topic Progress with Mastery Levels - Bottom */}
         {currentQuestion.topic_progress && (
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mt-6">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
               📊 Current Topic Progress
             </h3>
             
+            {/* Mastery Level Display */}
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Mastery Journey
+                </span>
+                <span className="text-sm text-gray-600 dark:text-gray-400">
+                  {currentQuestion.mastery_level ? currentQuestion.mastery_level.charAt(0).toUpperCase() + currentQuestion.mastery_level.slice(1) : 'Novice'}
+                </span>
+              </div>
+              
+              {/* Mastery Level Progress Bar */}
+              <div className="relative">
+                {/* Progress Line - Behind the circles */}
+                <div className="absolute top-4 left-0 right-0 h-0.5 bg-gray-200 dark:bg-gray-700 z-0" style={{ width: '100%' }}>
+                  <div 
+                    className="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-red-500 transition-all duration-500"
+                    style={{ 
+                      width: `${
+                        (currentQuestion.mastery_level || 'novice').toLowerCase() === 'novice' ? '10%' :
+                        (currentQuestion.mastery_level || 'novice').toLowerCase() === 'competent' ? '30%' :
+                        (currentQuestion.mastery_level || 'novice').toLowerCase() === 'proficient' ? '50%' :
+                        (currentQuestion.mastery_level || 'novice').toLowerCase() === 'expert' ? '70%' :
+                        '90%'
+                      }` 
+                    }}
+                  ></div>
+                </div>
+                
+                {/* Level Circles - In front */}
+                <div className="flex justify-between mb-2 relative z-10">
+                  {['Novice', 'Competent', 'Proficient', 'Expert', 'Master'].map((level, index) => (
+                    <div key={level} className="flex flex-col items-center relative" style={{ width: '20%' }}>
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 relative z-10 ${
+                        index === 0 ? 'bg-blue-500 text-white' :
+                        index === 1 ? 'bg-green-500 text-white' :
+                        index === 2 ? 'bg-purple-500 text-white' :
+                        index === 3 ? 'bg-orange-500 text-white' :
+                        'bg-red-500 text-white'
+                      } ${
+                        // Highlight current level
+                        (currentQuestion.mastery_level || 'novice').toLowerCase() === level.toLowerCase()
+                          ? 'ring-4 ring-opacity-30 ring-current scale-110'
+                          : ''
+                      }`}>
+                        {index === 0 ? '🌱' :
+                         index === 1 ? '📚' :
+                         index === 2 ? '🎯' :
+                         index === 3 ? '🚀' :
+                         '👑'}
+                      </div>
+                      <span className={`text-xs mt-1 ${
+                        (currentQuestion.mastery_level || 'novice').toLowerCase() === level.toLowerCase()
+                          ? 'font-bold text-gray-900 dark:text-white'
+                          : 'text-gray-500 dark:text-gray-400'
+                      }`}>
+                        {level}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+            </div>
+            
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Proficiency Progress */}
+              {/* Mastery Progress */}
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Proficiency
+                    Progress to Next Level
                   </span>
                   <span className="text-sm text-gray-600 dark:text-gray-400">
-                    {formatPercentage(currentQuestion.topic_progress.proficiency.current_accuracy)}% 
-                    (need {formatPercentage(currentQuestion.topic_progress.proficiency.required_accuracy)}%)
+                    {Math.round(currentQuestion.topic_progress.proficiency.progress_to_next || 0)}%
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 mb-2">
                   <div 
                     className={`h-3 rounded-full transition-all duration-500 ${
-                      currentQuestion.topic_progress.proficiency.progress_percent >= 100 
+                      (currentQuestion.topic_progress.proficiency.progress_to_next || 0) >= 100 
                         ? 'bg-green-500' 
-                        : currentQuestion.topic_progress.proficiency.progress_percent >= 75
+                        : (currentQuestion.topic_progress.proficiency.progress_to_next || 0) >= 75
                         ? 'bg-yellow-500'
                         : 'bg-blue-500'
                     }`}
-                    style={{ width: `${Math.min(100, currentQuestion.topic_progress.proficiency.progress_percent)}%` }}
+                    style={{ width: `${Math.min(100, currentQuestion.topic_progress.proficiency.progress_to_next || 0)}%` }}
                   ></div>
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {currentQuestion.topic_progress.proficiency.questions_answered} / {currentQuestion.topic_progress.proficiency.min_questions_required} questions answered
+                  {currentQuestion.topic_progress.proficiency.questions_answered || 0} questions answered at {currentQuestion.topic_progress.proficiency.mastery_level || 'novice'} level
                 </div>
               </div>
 
-              {/* Interest Progress */}
+              {/* Confidence Progress */}
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Interest Level
+                    Confidence Level
                   </span>
                   <span className="text-sm text-gray-600 dark:text-gray-400">
-                    {currentQuestion.topic_progress.interest.level} ({formatPercentage(currentQuestion.topic_progress.interest.current_score)}%)
+                    {Math.round(((currentQuestion.topic_progress.confidence || 0) / 10) * 100)}%
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 mb-2">
                   <div 
                     className={`h-3 rounded-full transition-all duration-500 ${
-                      currentQuestion.topic_progress.interest.progress_percent >= 70 
-                        ? 'bg-purple-500' 
-                        : currentQuestion.topic_progress.interest.progress_percent >= 40
-                        ? 'bg-indigo-500'
-                        : 'bg-gray-400'
+                      (currentQuestion.topic_progress.confidence || 0) >= 7 
+                        ? 'bg-green-500' 
+                        : (currentQuestion.topic_progress.confidence || 0) >= 4
+                        ? 'bg-yellow-500'
+                        : 'bg-red-400'
                     }`}
-                    style={{ width: `${currentQuestion.topic_progress.interest.progress_percent}%` }}
+                    style={{ width: `${Math.min(100, ((currentQuestion.topic_progress.confidence || 0) / 10) * 100)}%` }}
                   ></div>
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                  Actions: Teach Me (+), Skip (-), Correct answers (+)
+                  Builds through consistent correct answers and practice
                 </div>
               </div>
             </div>
+
+            {/* Mastery Progress Info */}
+            {feedback?.mastery_advancement && (
+              <div className="mt-4 p-4 rounded-lg bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 border border-purple-200 dark:border-purple-800">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-sm font-medium text-purple-800 dark:text-purple-200">
+                      Mastery Progress
+                    </span>
+                    <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
+                      {feedback.mastery_advancement.questions_at_level} question{feedback.mastery_advancement.questions_at_level !== 1 ? 's' : ''} answered at {feedback.mastery_advancement.current_level} level
+                    </p>
+                    {!feedback.mastery_advancement.advanced && feedback.mastery_advancement.questions_needed && (
+                      <p className="text-xs text-purple-600 dark:text-purple-400">
+                        {feedback.mastery_advancement.questions_needed} more questions needed for next level
+                      </p>
+                    )}
+                  </div>
+                  {feedback.mastery_advancement.advanced && (
+                    <div className="text-right">
+                      <span className="text-sm font-bold text-green-600 dark:text-green-400">
+                        🎉 Level Up!
+                      </span>
+                      <p className="text-xs text-green-600 dark:text-green-400">
+                        {feedback.mastery_advancement.old_level} → {feedback.mastery_advancement.new_level}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Unlock Status */}
             <div className="mt-4 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  🔓 Unlock Progress
+                  🔓 Subtopic Unlocking
                 </span>
                 <span className={`text-sm font-semibold ${
-                  currentQuestion.topic_progress.unlock.ready 
+                  currentQuestion.topic_progress.proficiency.can_unlock_subtopics 
                     ? 'text-green-600 dark:text-green-400'
-                    : currentQuestion.topic_progress.unlock.has_subtopics
-                    ? 'text-blue-600 dark:text-blue-400'
                     : 'text-gray-600 dark:text-gray-400'
                 }`}>
-                  {currentQuestion.topic_progress.unlock.status || (currentQuestion.topic_progress.unlock.ready ? 'Ready to unlock!' : `${Math.round(currentQuestion.topic_progress.unlock.overall_progress_percent)}%`)}
+                  {currentQuestion.topic_progress.proficiency.can_unlock_subtopics ? 'Unlocked!' : 'Locked'}
                 </span>
               </div>
               
-              {!currentQuestion.topic_progress.unlock.ready && !currentQuestion.topic_progress.unlock.has_subtopics && (
-                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                  <div 
-                    className="h-2 rounded-full bg-gradient-to-r from-blue-500 to-green-500 transition-all duration-500"
-                    style={{ width: `${currentQuestion.topic_progress.unlock.overall_progress_percent}%` }}
-                  ></div>
-                </div>
-              )}
-              
-              {currentQuestion.topic_progress.unlock.ready && (
+              {currentQuestion.topic_progress.proficiency.can_unlock_subtopics ? (
                 <div className="text-sm text-green-600 dark:text-green-400">
-                  ✨ New subtopics will unlock after this question!
+                  ✨ You've reached Competent level! New subtopics are unlocked automatically as you learn.
                 </div>
-              )}
-              
-              {currentQuestion.topic_progress.unlock.has_subtopics && (
-                <div className="text-sm text-blue-600 dark:text-blue-400">
-                  🎯 System is exploring specialized subtopics based on your progress!
+              ) : (
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  🎯 Reach Competent mastery level to unlock specialized subtopics in this area.
                 </div>
               )}
             </div>

@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 import time
 
-from api.routes import health, quiz, topics, auth, progress, personalization, topic_requests
+from api.routes import health, quiz, topics, auth, progress, personalization, topic_requests, mastery
 from api.v1 import adaptive_learning
 from core.config import settings
 from core.logging_config import logger, performance_logger
@@ -69,6 +69,7 @@ app.include_router(topic_requests.router, prefix="/api/v1/topics", tags=["topic_
 app.include_router(quiz.router, prefix="/api/v1/quiz", tags=["quiz"])
 app.include_router(progress.router, prefix="/api/v1/progress", tags=["progress"])
 app.include_router(personalization.router, prefix="/api/v1/personalization", tags=["personalization"])
+app.include_router(mastery.router, prefix="/api/v1", tags=["mastery"])
 app.include_router(adaptive_learning.router, prefix="/api/v1", tags=["adaptive_learning"])
 
 if __name__ == "__main__":

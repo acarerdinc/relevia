@@ -88,6 +88,8 @@ Return ONLY the JSON object, no additional text."""
             if all(field in result for field in required_fields):
                 # Validate exactly 4 options
                 if isinstance(result['options'], list) and len(result['options']) == 4:
+                    # Shuffle options to prevent always having correct answer in same position
+                    result = self._shuffle_options(result)
                     return result
                 else:
                     print(f"Invalid options count: got {len(result['options']) if isinstance(result['options'], list) else 'non-list'}, expected 4")
@@ -95,6 +97,8 @@ Return ONLY the JSON object, no additional text."""
                     if isinstance(result['options'], list) and len(result['options']) > 4:
                         result['options'] = result['options'][:4]
                         print(f"Truncated options to 4")
+                        # Shuffle after truncation too
+                        result = self._shuffle_options(result)
                         return result
                     else:
                         return self._get_fallback_question(topic, difficulty)
@@ -151,6 +155,68 @@ Return ONLY the JSON object, no additional text."""
             error_logger.error(f"Gemini API error: {e}")
             raise
     
+    def _shuffle_options(self, question_data: Dict) -> Dict:
+        """Shuffle the options randomly and update the correct_answer accordingly"""
+        import random
+        
+        # DEBUG MODE: Skip shuffling and provide correct answer index for frontend highlighting
+        debug_mode = True  # Enabled for fast debugging
+        
+        if debug_mode:
+            # Don't shuffle in debug mode - keep original order
+            options = question_data['options'].copy()
+            correct_answer = question_data['correct_answer']
+            
+            # Find correct option index for frontend highlighting
+            debug_correct_index = None
+            for i, option in enumerate(options):
+                if option == correct_answer or option.strip().lower() == correct_answer.strip().lower():
+                    debug_correct_index = i
+                    break
+            
+            question_data['options'] = options
+            if debug_correct_index is not None:
+                question_data['debug_correct_index'] = debug_correct_index
+            return question_data
+        
+        # NORMAL MODE: Shuffle options
+        # Get the original options and correct answer
+        original_options = question_data['options'].copy()
+        correct_answer = question_data['correct_answer']
+        
+        # Find the index of the correct answer
+        try:
+            correct_index = original_options.index(correct_answer)
+        except ValueError:
+            # If exact match fails, try case-insensitive search
+            correct_index = None
+            for i, option in enumerate(original_options):
+                if option.strip().lower() == correct_answer.strip().lower():
+                    correct_index = i
+                    break
+            
+            # If still not found, return original (don't shuffle to avoid breaking)
+            if correct_index is None:
+                print(f"Warning: Correct answer '{correct_answer}' not found in options, skipping shuffle")
+                return question_data
+        
+        # Create a list of indices and shuffle them
+        indices = list(range(len(original_options)))
+        random.shuffle(indices)
+        
+        # Reorder options according to shuffled indices
+        shuffled_options = [original_options[i] for i in indices]
+        
+        # Find where the correct answer ended up after shuffling
+        new_correct_index = indices.index(correct_index)
+        new_correct_answer = shuffled_options[new_correct_index]
+        
+        # Update the question data
+        question_data['options'] = shuffled_options
+        question_data['correct_answer'] = new_correct_answer
+        
+        return question_data
+    
     def _get_fallback_question(self, topic: str, difficulty: int) -> Dict:
         """Generate a fallback question when API is unavailable"""
         fallback_questions = {
@@ -190,11 +256,14 @@ Return ONLY the JSON object, no additional text."""
         }
         
         if difficulty <= 3:
-            return fallback_questions["easy"]
+            result = fallback_questions["easy"]
         elif difficulty <= 7:
-            return fallback_questions["medium"]
+            result = fallback_questions["medium"]
         else:
-            return fallback_questions["hard"]
+            result = fallback_questions["hard"]
+        
+        # Shuffle fallback questions too
+        return self._shuffle_options(result)
     
     async def generate_quiz_questions(
         self,
@@ -264,7 +333,7 @@ STEP 1: CHECK FOR EXACT MATCHES
 STEP 2: IF NO EXACT MATCH EXISTS
 - Only then consider semantic similarity and parent placement
 - Large Language Models/transformers/BERT/GPT → "Natural Language Processing" or "Modern AI"
-- Computer Vision/CNNs → "Computer Vision"
+- Image processing/CNN techniques → appropriate vision-related topics
 - Reinforcement Learning → "Reinforcement Learning"
 
 RESPOND WITH ONLY THIS JSON FORMAT:

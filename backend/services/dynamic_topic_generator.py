@@ -18,7 +18,7 @@ class DynamicTopicGenerator:
         db: AsyncSession, 
         parent_topic: Topic, 
         user_interests: List[Dict], 
-        count: int = 3
+        count: int = None
     ) -> List[Dict]:
         """
         Generate new subtopics for a parent topic based on user interests and proficiency
@@ -26,7 +26,7 @@ class DynamicTopicGenerator:
         # Get user's interest level for this topic
         interest_score = await self._get_user_interest_score(db, parent_topic.id, user_interests)
         
-        # Generate prompt based on parent topic and user interests
+        # Generate prompt based on parent topic and user interests (count=None means AI determines optimal number)
         prompt = self._create_generation_prompt(parent_topic, user_interests, interest_score, count)
         
         try:
@@ -36,19 +36,30 @@ class DynamicTopicGenerator:
             # Parse and validate the response
             subtopics = self._parse_subtopics_response(response, parent_topic)
             
-            return subtopics[:count]  # Limit to requested count
+            if not subtopics:
+                print(f"❌ AI generation failed for {parent_topic.name} - no valid subtopics generated")
+                return []
+            
+            # Validate MECE principles
+            if not self._validate_mece_principles(subtopics, parent_topic):
+                print(f"⚠️ Generated subtopics for {parent_topic.name} violate MECE principles - retrying with stronger instructions")
+                # TODO: Could add retry logic here
+                return []
+            
+            print(f"✅ Generated {len(subtopics)} MECE-compliant subtopics for {parent_topic.name}")
+            return subtopics
             
         except Exception as e:
-            print(f"Error generating subtopics: {e}")
-            # Fallback to basic subtopics if AI fails
-            return self._create_fallback_subtopics(parent_topic, count)
+            print(f"❌ Error generating subtopics for {parent_topic.name}: {e}")
+            print(f"🚫 No fallback used - returning empty list")
+            return []
     
     def _create_generation_prompt(
         self, 
         parent_topic: Topic, 
         user_interests: List[Dict], 
         interest_score: float, 
-        count: int
+        count: int = None
     ) -> str:
         """Create a prompt for Gemini to generate subtopics"""
         
@@ -65,41 +76,64 @@ class DynamicTopicGenerator:
         # Determine difficulty based on interest and current topic depth
         difficulty_guidance = self._get_difficulty_guidance(parent_topic, interest_score)
         
-        prompt = f"""You are an expert curriculum designer creating an adaptive learning ontology for artificial intelligence topics.
+        # Create high-level categories that organize the field, not specific techniques
+        depth_guidance = """
+Create HIGH-LEVEL CATEGORIES that organize this field into major conceptual areas, such as:
+- Core fundamentals and theory
+- Key methodologies and approaches
+- Applications and use cases  
+- Analysis and evaluation
+- Advanced topics and research frontiers
 
-Parent Topic: "{parent_topic.name}"
+AVOID overly specific techniques, algorithms, or narrow applications.
+Think like organizing a textbook's main chapters, not individual sections or techniques."""
+
+        prompt = f"""You are subdividing a topic into its fundamental knowledge domains. Your goal is to create a COMPLETE and NON-OVERLAPPING breakdown.
+
+Topic: "{parent_topic.name}"
 Description: "{parent_topic.description}"
-Current Difficulty Range: {parent_topic.difficulty_min}-{parent_topic.difficulty_max}
-User Interest Score: {interest_score:.2f} (0.0 = low, 1.0 = high)
-{interest_context}
 
-{difficulty_guidance}
+CRITICAL REQUIREMENTS:
+1. MUTUALLY EXCLUSIVE: Each subtopic covers a distinct area with NO overlap between any subtopics
+2. COLLECTIVELY EXHAUSTIVE: Together, the subtopics must cover EVERYTHING in the parent topic
+3. KNOWLEDGE-FOCUSED: Generate conceptual divisions and paradigms, NOT methodologies or processes
+4. COMPLETE COVERAGE: A student mastering all generated subtopics should have comprehensive knowledge of "{parent_topic.name}"
 
-Generate exactly {count} specific, learnable subtopics that:
-1. Are more specific than the parent topic
-2. Can be learned independently but build on the parent concept
-3. Progress from foundational to advanced concepts
-4. Match the user's demonstrated interest level
-5. Are practical and applicable
+METHODOLOGY - Apply MECE Principle:
+- Start by identifying ALL major areas within the topic
+- Group related concepts into broader categories to avoid overlap
+- Ensure no important area is left uncovered
+- Test: Can a concept belong to multiple subtopics? If yes, reorganize.
 
-Return ONLY a valid JSON array with this exact structure:
+GOOD EXAMPLES (MECE):
+- For "Mathematics": Pure Mathematics, Applied Mathematics, Statistics & Probability (non-overlapping domains)
+- For "Biology": Molecular Biology, Ecology, Evolution & Genetics, Physiology (distinct scales/approaches)
+- For "Computer Science": Theoretical Foundations, Systems & Software, Data & AI, Human-Computer Interaction (orthogonal areas)
+
+BAD EXAMPLES (VIOLATE MECE):
+- For "Mathematics": Algebra, Calculus, Problem Solving (Problem Solving uses Algebra & Calculus)
+- For "Biology": Genetics, Molecular Biology, DNA (Genetics includes DNA, overlaps with Molecular Biology)
+- For "Computer Science": Programming, Software Engineering, Web Development (Web Dev is part of Programming/Software Eng)
+
+VALIDATION CHECKLIST:
+✓ Each subtopic addresses a different fundamental question or aspect
+✓ No subtopic is a subset, tool, or application of another
+✓ Combined subtopics represent 100% of the parent topic's scope
+✓ An expert could specialize in one subtopic without deep knowledge of others
+
+Generate AS MANY subtopics as needed to create a complete MECE breakdown of "{parent_topic.name}". 
+Do not limit yourself to a fixed number - generate however many subtopics are required for proper coverage.
+
+Return ONLY this JSON:
 [
   {{
-    "name": "Specific Subtopic Name",
-    "description": "Clear, educational description of what this subtopic covers",
-    "difficulty_min": integer (1-10),
-    "difficulty_max": integer (1-10),
-    "learning_objectives": ["objective1", "objective2", "objective3"]
+    "name": "Subdivision Name",
+    "description": "What this subdivision covers",
+    "difficulty_min": {max(1, parent_topic.difficulty_min)},
+    "difficulty_max": {min(10, parent_topic.difficulty_max + 1)},
+    "learning_objectives": ["Learn core concepts", "Understand principles", "Apply knowledge"]
   }}
-]
-
-Important:
-- Topic names should be 3-8 words maximum
-- Descriptions should be 1-2 sentences
-- difficulty_min should be >= parent's difficulty_min
-- difficulty_max should be <= parent's difficulty_max + 2
-- Make topics progressively more challenging
-- Focus on practical, hands-on learning"""
+]"""
 
         return prompt
     
@@ -133,6 +167,16 @@ Important:
                 raise ValueError("No JSON array found in response")
             
             json_str = json_match.group(0)
+            
+            # Clean up unicode quotes and other formatting issues
+            json_str = json_str.replace('"', '"').replace('"', '"')  # Fix curly quotes
+            json_str = json_str.replace(''', "'").replace(''', "'")  # Fix curly apostrophes
+            json_str = json_str.replace('…', '...')  # Fix ellipsis
+            json_str = json_str.replace('—', '-').replace('–', '-')  # Fix dashes
+            json_str = json_str.replace('\u201c', '"').replace('\u201d', '"')  # Unicode quotes
+            json_str = json_str.replace('\u2018', "'").replace('\u2019', "'")  # Unicode apostrophes
+            json_str = json_str.replace('\u2026', '...')  # Unicode ellipsis
+            
             subtopics = json.loads(json_str)
             
             if not isinstance(subtopics, list):
@@ -190,95 +234,80 @@ Important:
             print(f"Error validating subtopic: {e}")
             return None
     
-    def _create_fallback_subtopics(self, parent_topic: Topic, count: int) -> List[Dict]:
-        """Create basic fallback subtopics if AI generation fails"""
-        base_name = parent_topic.name
+    def _validate_mece_principles(self, subtopics: List[Dict], parent_topic: Topic) -> bool:
+        """Validate that generated subtopics follow MECE principles"""
         
-        fallback_subtopics = []
+        if len(subtopics) < 2:
+            print(f"⚠️ Only {len(subtopics)} subtopics generated - likely not comprehensive")
+            return False
         
-        # Special case for root "Artificial Intelligence" topic - use major AI domains
-        if base_name == "Artificial Intelligence":
-            major_ai_domains = [
-                {
-                    "name": "Machine Learning",
-                    "description": "Algorithms that improve automatically through experience and data",
-                    "difficulty_min": 2,
-                    "difficulty_max": 8
-                },
-                {
-                    "name": "Computer Vision", 
-                    "description": "Enabling computers to interpret and understand visual information",
-                    "difficulty_min": 4,
-                    "difficulty_max": 9
-                },
-                {
-                    "name": "Natural Language Processing",
-                    "description": "Teaching machines to understand, interpret and generate human language", 
-                    "difficulty_min": 3,
-                    "difficulty_max": 8
-                },
-                {
-                    "name": "Deep Learning",
-                    "description": "Neural networks with multiple layers for complex pattern recognition",
-                    "difficulty_min": 4,
-                    "difficulty_max": 9
-                },
-                {
-                    "name": "Reinforcement Learning",
-                    "description": "Learning optimal actions through trial-and-error with environmental feedback",
-                    "difficulty_min": 5,
-                    "difficulty_max": 9
-                },
-                {
-                    "name": "AI Ethics and Safety",
-                    "description": "Responsible development and deployment of artificial intelligence systems",
-                    "difficulty_min": 2,
-                    "difficulty_max": 6
-                },
-                {
-                    "name": "Robotics and AI",
-                    "description": "Integration of AI with robotic systems for autonomous behavior",
-                    "difficulty_min": 5,
-                    "difficulty_max": 9
-                }
+        # Check for obvious overlaps in names
+        topic_names = [s['name'].lower() for s in subtopics]
+        
+        # Known problematic combinations that violate MECE
+        problematic_pairs = [
+            ('computer vision', 'deep learning'),
+            ('machine learning', 'deep learning'),
+            ('artificial intelligence', 'machine learning'),
+            ('programming', 'software engineering'),
+            ('algorithms', 'data structures'),
+            ('neural networks', 'deep learning'),
+            ('supervised learning', 'machine learning'),
+            ('web development', 'software engineering'),
+            # AI application overlaps
+            ('applications of ai', 'ai in'),  # Generic "applications" conflicts with specific "ai in X"
+            ('applications of ai', 'business'),
+            ('applications of ai', 'autonomous'),
+            ('applications of ai', 'healthcare'),
+            ('applications of ai', 'finance')
+        ]
+        
+        for pair in problematic_pairs:
+            # Check for exact matches or substring matches
+            match_0 = any(pair[0] in name for name in topic_names)
+            match_1 = any(pair[1] in name for name in topic_names)
+            
+            if match_0 and match_1:
+                matching_names = [name for name in topic_names if pair[0] in name or pair[1] in name]
+                print(f"⚠️ MECE violation detected: '{pair[0]}' and '{pair[1]}' overlap in topics: {matching_names}")
+                return False
+        
+        # Check for duplicate or very similar names
+        for i, name1 in enumerate(topic_names):
+            for j, name2 in enumerate(topic_names[i+1:], i+1):
+                # Check for exact duplicates
+                if name1 == name2:
+                    print(f"⚠️ Duplicate topic names: '{name1}'")
+                    return False
+                
+                # Check for very similar names (>80% overlap in words)
+                words1 = set(name1.split())
+                words2 = set(name2.split())
+                if len(words1 & words2) / max(len(words1), len(words2)) > 0.8:
+                    print(f"⚠️ Very similar topic names: '{name1}' and '{name2}'")
+                    return False
+        
+        # For AI specifically, ensure comprehensive coverage
+        if parent_topic.name == "Artificial Intelligence":
+            expected_domains = [
+                'machine learning', 'natural language', 'computer vision', 
+                'robotics', 'knowledge', 'expert system', 'reasoning', 'ethics'
             ]
+            covered_domains = []
             
-            # Return all major domains, not limited by count for the root topic
-            for domain in major_ai_domains:
-                domain["learning_objectives"] = [
-                    f"Understand core principles of {domain['name'].lower()}",
-                    f"Learn key techniques and methodologies",
-                    f"Apply concepts to real-world problems"
-                ]
+            for name in topic_names:
+                for domain in expected_domains:
+                    if domain in name:
+                        covered_domains.append(domain)
+                        break
             
-            return major_ai_domains
-        else:
-            # Generic subtopic patterns for non-root topics
-            patterns = [
-                f"Fundamentals of {base_name}",
-                f"Advanced {base_name}",
-                f"Applications of {base_name}",
-                f"{base_name} Algorithms",
-                f"{base_name} Best Practices",
-                f"{base_name} Case Studies",
-                f"Modern {base_name}",
-                f"{base_name} Tools and Techniques"
-            ]
-            
-            for i in range(min(count, len(patterns))):
-                fallback_subtopics.append({
-                    "name": patterns[i],
-                    "description": f"Explore key concepts and techniques in {patterns[i].lower()}",
-                    "difficulty_min": parent_topic.difficulty_min,
-                    "difficulty_max": min(10, parent_topic.difficulty_max + 1),
-                    "learning_objectives": [
-                        f"Understand core concepts of {patterns[i].lower()}",
-                        f"Apply techniques in practical scenarios",
-                        f"Analyze real-world examples"
-                    ]
-                })
-            
-            return fallback_subtopics
+            coverage_ratio = len(set(covered_domains)) / len(expected_domains)
+            if coverage_ratio < 0.4:  # Should cover at least 40% of major AI domains (relaxed)
+                print(f"⚠️ AI subtopics only cover {coverage_ratio:.0%} of major domains - not collectively exhaustive")
+                return False
+        
+        print(f"✅ MECE validation passed for {len(subtopics)} subtopics")
+        return True
     
     async def create_topics_in_database(
         self, 

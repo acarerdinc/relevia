@@ -26,15 +26,16 @@ async def reset_to_minimal_infinite():
             print("🧹 Cleaning existing topics and progress...")
             
             # Delete in correct order to avoid foreign key issues
-            await session.execute("DELETE FROM quiz_questions")
-            await session.execute("DELETE FROM quiz_sessions") 
-            await session.execute("DELETE FROM user_skill_progress")
-            await session.execute("DELETE FROM user_interests")
-            await session.execute("DELETE FROM dynamic_topic_unlocks")
-            await session.execute("DELETE FROM learning_goals")
-            await session.execute("DELETE FROM questions")
-            await session.execute("DELETE FROM topic_prerequisites")
-            await session.execute("DELETE FROM topics")
+            await session.execute(text("DELETE FROM topic_question_history"))
+            await session.execute(text("DELETE FROM quiz_questions"))
+            await session.execute(text("DELETE FROM quiz_sessions")) 
+            await session.execute(text("DELETE FROM user_skill_progress"))
+            await session.execute(text("DELETE FROM user_interests"))
+            await session.execute(text("DELETE FROM dynamic_topic_unlocks"))
+            await session.execute(text("DELETE FROM learning_goals"))
+            await session.execute(text("DELETE FROM questions"))
+            await session.execute(text("DELETE FROM topic_prerequisites"))
+            await session.execute(text("DELETE FROM topics"))
             
             print("✅ All topics deleted")
             

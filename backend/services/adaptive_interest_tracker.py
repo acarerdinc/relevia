@@ -55,22 +55,15 @@ class AdaptiveInterestTracker:
         # Check for new interest discoveries
         new_interests = await self._discover_emerging_interests(db, user_id)
         
-        # MEANINGFUL TOPIC GENERATION: Only generate deeper topics when user shows mastery
-        # "Teach Me" indicates they need MORE practice on current topic, not advancement
+        # DISABLE TOPIC GENERATION: Interest tracker should NOT generate topics
+        # Topic generation is handled by mastery-based system in dynamic_ontology_service
+        # Interest tracker should only track interests, not trigger topic generation
         should_generate_topics = False
         
-        # Only consider advancement if they're answering correctly
-        if action == 'answer' and performance_data.get('is_correct', False):
-            # Check multiple signals for true understanding
-            accuracy = performance_data.get('accuracy', 0)
-            questions_answered = performance_data.get('questions_answered', 0)
-            
-            # Require both high accuracy AND sufficient practice
-            if accuracy >= 0.7 and questions_answered >= 3:
-                # Also check if user has shown consistent interest (not just lucky guesses)
-                user_interest = await self._get_topic_interest_score(db, user_id, topic_id)
-                if user_interest and user_interest > 0.5:  # Moderate interest is enough with good performance
-                    should_generate_topics = True
+        # NOTE: Previously this had accuracy-based generation logic that bypassed 
+        # the mastery level system, causing subtopics to be generated prematurely
+        # at Novice level. All topic generation should go through the proper
+        # mastery-based progression system only.
         
         generated_topics = []
         if should_generate_topics:

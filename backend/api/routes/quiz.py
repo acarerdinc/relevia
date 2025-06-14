@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
+from typing import Union
 from db.database import get_db
 from services.quiz_service import quiz_engine
 
@@ -12,7 +13,7 @@ class StartQuizRequest(BaseModel):
 
 class SubmitAnswerRequest(BaseModel):
     quiz_question_id: int
-    answer: str = None
+    answer: Union[str, int, None] = None  # Allow string, int, or None
     time_spent: int = 0
     action: str = "answer"  # answer, teach_me, skip
 

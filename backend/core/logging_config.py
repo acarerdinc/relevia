@@ -7,15 +7,19 @@ Centralized logging configuration for Relevia backend
 import logging
 import logging.handlers
 import os
+import sys
 from pathlib import Path
 from datetime import datetime, timedelta
 import time
 import asyncio
 from typing import Optional
 
-# Create logs directory if it doesn't exist
-LOGS_DIR = Path(__file__).parent.parent / "logs"
-LOGS_DIR.mkdir(exist_ok=True)
+# Create logs directory if it doesn't exist (skip on Vercel)
+if not os.environ.get('VERCEL'):
+    LOGS_DIR = Path(__file__).parent.parent / "logs"
+    LOGS_DIR.mkdir(exist_ok=True)
+else:
+    LOGS_DIR = None
 
 class PerformanceLogger:
     """Logger specifically for tracking performance metrics"""
@@ -43,8 +47,29 @@ class PerformanceLogger:
         
         return duration_ms
 
+def setup_console_logging():
+    """Setup console-only logging for Vercel"""
+    logger = logging.getLogger('relevia')
+    logger.setLevel(logging.INFO)
+    logger.handlers.clear()
+    
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    formatter = logging.Formatter(
+        '%(asctime)s | %(levelname)s | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+    logger.propagate = False
+    
+    return logger
+
 def setup_logging():
-    """Setup comprehensive logging configuration"""
+    """Setup logging configuration"""
+    # Check if running on Vercel
+    if os.environ.get('VERCEL'):
+        return setup_console_logging()
     
     # Create formatters
     detailed_formatter = logging.Formatter(
@@ -136,6 +161,9 @@ def setup_logging():
 
 def cleanup_old_logs(days_to_keep: int = 7):
     """Remove log files older than specified days"""
+    if not LOGS_DIR:
+        return  # Skip on Vercel
+    
     cutoff_date = datetime.now() - timedelta(days=days_to_keep)
     
     cleaned_count = 0

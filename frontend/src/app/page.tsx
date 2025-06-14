@@ -3,8 +3,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { AdaptiveLearning } from '@/components/AdaptiveLearning';
 import { ProgressDashboard } from '@/components/ProgressDashboard';
+import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function Home() {
+  const { logout, user } = useAuth();
   const [currentView, setCurrentView] = useState<'learning' | 'progress'>('learning');
   const [resetKey, setResetKey] = useState(0);
   const [startSession, setStartSession] = useState<{sessionId: number, topicId: number} | null>(null);
@@ -31,7 +34,8 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
+    <ProtectedRoute>
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
       <header className="bg-white dark:bg-gray-800 shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
@@ -82,6 +86,17 @@ export default function Home() {
               >
                 📊 Progress
               </button>
+              <div className="ml-4 pl-4 border-l border-gray-300 dark:border-gray-600 flex items-center space-x-4">
+                <span className="text-sm text-gray-600 dark:text-gray-400">
+                  {user?.email}
+                </span>
+                <button
+                  onClick={logout}
+                  className="px-3 py-2 rounded-md text-sm font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                >
+                  Logout
+                </button>
+              </div>
             </nav>
           </div>
         </div>
@@ -107,5 +122,6 @@ export default function Home() {
         )}
       </main>
     </div>
+    </ProtectedRoute>
   );
 }

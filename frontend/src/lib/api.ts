@@ -23,7 +23,9 @@ interface Question {
   options: string[];
   difficulty: number;
   topic: string;
+  topic_name?: string;
   debug_correct_index?: number; // Debug mode: index of correct answer for highlighting
+  [key: string]: any; // Allow additional properties
 }
 
 interface AnswerResponse {
@@ -38,14 +40,43 @@ interface AnswerResponse {
 }
 
 class ApiService {
-  private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  private token: string | null = null;
+
+  constructor() {
+    // Load token from localStorage on initialization
+    if (typeof window !== 'undefined') {
+      this.token = localStorage.getItem('auth_token');
+    }
+  }
+
+  setToken(token: string | null) {
+    this.token = token;
+    if (typeof window !== 'undefined') {
+      if (token) {
+        localStorage.setItem('auth_token', token);
+      } else {
+        localStorage.removeItem('auth_token');
+      }
+    }
+  }
+
+  async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const url = `${API_BASE_URL}${endpoint}`;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    // Add auth token if available
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`;
+    }
+
     const response = await fetch(url, {
+      ...options,
       headers: {
-        'Content-Type': 'application/json',
+        ...headers,
         ...options?.headers,
       },
-      ...options,
     });
 
     if (!response.ok) {
@@ -166,6 +197,45 @@ class ApiService {
         action: 'start_learning'
       }),
     });
+  }
+
+  // Authentication endpoints
+  async register(email: string, username: string, password: string): Promise<any> {
+    return this.request('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        email,
+        username,
+        password,
+      }),
+    });
+  }
+
+  async login(email: string, password: string): Promise<{ access_token: string; token_type: string }> {
+    const formData = new URLSearchParams();
+    formData.append('username', email); // OAuth2 expects 'username' field
+    formData.append('password', password);
+
+    const response = await this.request<{ access_token: string; token_type: string }>('/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: formData.toString(),
+    });
+
+    // Store the token
+    this.setToken(response.access_token);
+    
+    return response;
+  }
+
+  async logout() {
+    this.setToken(null);
+  }
+
+  async getMe(): Promise<any> {
+    return this.request('/auth/me');
   }
 }
 

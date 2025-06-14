@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { LearningRequestInput } from './LearningRequestInput';
+import { apiService, type Question } from '../lib/api';
 
 interface LearningDashboard {
   learning_state: {
@@ -30,34 +31,7 @@ interface LearningDashboard {
   };
 }
 
-interface Question {
-  question_id: number;
-  quiz_question_id: number;
-  question: string;
-  options: string[];
-  difficulty: number;
-  topic_name: string;
-  selection_strategy: string;
-  mastery_level?: string;
-  session_progress?: {
-    questions_answered: number;
-    session_accuracy: number;
-    questions_remaining: number;
-  };
-  topic_progress?: {
-    topic_name: string;
-    skill_level: number;
-    confidence: number;
-    mastery_level: string;
-    questions_answered: number;
-    proficiency: {
-      mastery_level: string;
-      questions_answered: number;
-      progress_to_next: number;
-      can_unlock_subtopics: boolean;
-    };
-  };
-}
+// Using Question type from ../lib/api
 
 interface AdaptiveLearningProps {
   onViewChange: (view: string) => void;
@@ -187,22 +161,28 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
   };
 
   const startLearning = async () => {
+    console.log('🚀 Continue Learning button clicked');
     setIsLoading(true);
     setIsFocusedSession(false); // This is adaptive learning, not focused
     try {
-      const response = await fetch('http://localhost:8000/api/v1/adaptive/continue/1');
-      const data = await response.json();
+      console.log('📡 Fetching from: /adaptive/continue');
+      const data = await apiService.request<any>('/adaptive/continue');
+      console.log('📡 Response data:', data);
       
       if (data.session && data.question) {
+        console.log('✅ Got session and question, setting up...');
         setSessionId(data.session.session_id);
         setCurrentQuestion(data.question);
         setQuestionCount(1);
       } else if (data.session_id) {
+        console.log('✅ Got session_id only, fetching question...');
         setSessionId(data.session_id);
         await getNextQuestion(data.session_id, false); // Explicitly use adaptive endpoint
+      } else {
+        console.error('❌ Unexpected response structure:', data);
       }
     } catch (error) {
-      console.error('Failed to start learning:', error);
+      console.error('❌ Failed to start learning:', error);
       resetSession(); // Reset session on start error
     } finally {
       setIsLoading(false);

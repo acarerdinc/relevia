@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import uvicorn
 import time
+import os
 
 from api.routes import health, quiz, topics, auth, progress, personalization, topic_requests, mastery
 from api.v1 import adaptive_learning
@@ -14,9 +15,22 @@ from db.database import engine, Base
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("🚀 Starting Relevia backend server")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info("✅ Database tables created/verified")
+    
+    # Check if running on Vercel
+    if os.environ.get("VERCEL") == "1":
+        # Use Vercel-specific initialization
+        from db.vercel_init import ensure_database_initialized
+        await ensure_database_initialized()
+    else:
+        # Standard initialization for local development
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("✅ Database tables created/verified")
+        
+        # Initialize database with users and topics
+        from db.init_db import init_database
+        await init_database()
+    
     yield
     # Shutdown
     logger.info("🛑 Shutting down Relevia backend server")
@@ -28,6 +42,16 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan
 )
+
+# Database initialization middleware for Vercel
+if os.environ.get("VERCEL") == "1":
+    @app.middleware("http")
+    async def ensure_db_initialized(request: Request, call_next):
+        # Skip for health checks
+        if "/health" not in request.url.path:
+            from db.vercel_init import ensure_database_initialized
+            await ensure_database_initialized()
+        return await call_next(request)
 
 # API request logging middleware
 @app.middleware("http")

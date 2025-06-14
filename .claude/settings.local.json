@@ -44,7 +44,12 @@
       "Bash(touch:*)",
       "Bash(sqlite3:*)",
       "Bash(psql:*)",
+      "Bash(rg:*)",
       "Bash(sed:*)",
+      "Bash(git cherry-pick:*)",
+      "WebFetch(domain:vercel.com)",
+      "Bash(cat:*)",
+      "Bash(cp:*)",
       "Bash(./scripts/restart_server.sh:*)",
       "Bash(./reset_db.sh:*)"
     ],

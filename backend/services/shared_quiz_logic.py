@@ -85,19 +85,17 @@ class SharedQuizLogic:
                         result = await dynamic_ontology_service.check_and_unlock_subtopics(
                             bg_db, user_id, topic_id
                         )
-                        print(f"✅ Background subtopic generation completed for user {user_id}, topic {topic_id}. Result: {len(result) if result else 0} topics")
+                        print(f"✅ Background subtopic generation completed for user {user_id}, topic {topic_id}")
+                        if result:
+                            print(f"🎆 Unlocked {len(result)} new subtopics: {[t['name'] for t in result]}")
                     except Exception as inner_e:
-                        # Make sure to rollback on error
                         await bg_db.rollback()
+                        print(f"⚠️ Database error in background task: {inner_e}")
                         raise inner_e
             except Exception as e:
+                print(f"❌ Background topic unlock failed for user {user_id}: {e}")
                 import traceback
-                print(f"⚠️ Background topic unlock failed for user {user_id}: {e}")
-                print(f"Traceback: {traceback.format_exc()}")
-                # Log to error logger as well
-                error_logger = logger.getChild("errors")
-                error_logger.error(f"Background subtopic generation failed for user {user_id}, topic {topic_id}: {e}")
-                error_logger.error(f"Stack trace:\n{traceback.format_exc()}")
+                traceback.print_exc()
         
         # Start background task without waiting
         task = asyncio.create_task(background_subtopic_generation())

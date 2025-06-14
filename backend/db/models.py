@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, JSON, DateTime, Text
+# Note: Using timezone-naive datetimes for SQLite compatibility
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from db.database import Base
@@ -11,7 +12,7 @@ class User(Base):
     username = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime, server_default=func.now())
     
     # Relationships
     quiz_sessions = relationship("QuizSession", back_populates="user")
@@ -56,7 +57,7 @@ class Question(Base):
     explanation = Column(Text)
     difficulty = Column(Integer, nullable=False)
     mastery_level = Column(String, default="novice")  # novice, competent, proficient, expert, master
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime, server_default=func.now())
     
     # Relationships
     topic = relationship("Topic", back_populates="questions")
@@ -68,8 +69,8 @@ class QuizSession(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     topic_id = Column(Integer, ForeignKey("topics.id"), nullable=True)  # Nullable for adaptive sessions
-    started_at = Column(DateTime(timezone=True), server_default=func.now())
-    completed_at = Column(DateTime(timezone=True))
+    started_at = Column(DateTime, server_default=func.now())
+    completed_at = Column(DateTime)
     total_questions = Column(Integer, default=0)
     correct_answers = Column(Integer, default=0)
     session_type = Column(String, default="topic_focused")  # "topic_focused" or "adaptive"
@@ -87,7 +88,7 @@ class QuizQuestion(Base):
     question_id = Column(Integer, ForeignKey("questions.id"), nullable=False)
     user_answer = Column(Text)
     is_correct = Column(Boolean)
-    answered_at = Column(DateTime(timezone=True))
+    answered_at = Column(DateTime)
     time_spent = Column(Integer)  # seconds
     user_action = Column(String)  # answer, teach_me, skip
     interest_signal = Column(Float, default=0.0)  # Numeric interest signal
@@ -110,9 +111,9 @@ class UserSkillProgress(Base):
     current_mastery_level = Column(String, default="novice")
     mastery_questions_answered = Column(JSON, default={"novice": 0, "competent": 0, "proficient": 0, "expert": 0, "master": 0})
     is_unlocked = Column(Boolean, default=True)  # Whether user can access this topic
-    unlocked_at = Column(DateTime(timezone=True))
+    unlocked_at = Column(DateTime)
     proficiency_threshold_met = Column(Boolean, default=False)  # For unlocking subtopics
-    last_seen = Column(DateTime(timezone=True), server_default=func.now())
+    last_seen = Column(DateTime, server_default=func.now())
     
     # Relationships
     user = relationship("User", back_populates="skill_progress")
@@ -127,8 +128,8 @@ class UserInterest(Base):
     interaction_count = Column(Integer, default=0)  # Number of times engaged with topic
     time_spent = Column(Integer, default=0)  # Total time spent in seconds
     preference_type = Column(String)  # explicit, implicit, inferred
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, onupdate=func.now())
     
     # Relationships
     user = relationship("User")
@@ -142,7 +143,7 @@ class DynamicTopicUnlock(Base):
     parent_topic_id = Column(Integer, ForeignKey("topics.id"), nullable=True)
     unlocked_topic_id = Column(Integer, ForeignKey("topics.id"), nullable=False)
     unlock_trigger = Column(String)  # proficiency, interest, exploration
-    unlocked_at = Column(DateTime(timezone=True), server_default=func.now())
+    unlocked_at = Column(DateTime, server_default=func.now())
     
     # Relationships
     user = relationship("User")
@@ -157,10 +158,10 @@ class LearningGoal(Base):
     goal_type = Column(String)  # skill_mastery, exploration, certification
     target_topics = Column(JSON)  # List of topic IDs
     target_proficiency = Column(String)  # beginner, intermediate, advanced, expert
-    deadline = Column(DateTime(timezone=True))
+    deadline = Column(DateTime)
     is_active = Column(Boolean, default=True)
     progress = Column(Float, default=0.0)  # 0-1
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime, server_default=func.now())
     
     # Relationships
     user = relationship("User")
@@ -175,7 +176,7 @@ class TopicQuestionHistory(Base):
     session_id = Column(Integer, ForeignKey("quiz_sessions.id"), nullable=False)
     question_content = Column(Text, nullable=False)  # Store question text for analysis
     extracted_concepts = Column(JSON)  # Key concepts/themes from the question
-    asked_at = Column(DateTime(timezone=True), server_default=func.now())
+    asked_at = Column(DateTime, server_default=func.now())
     
     # Relationships
     user = relationship("User")

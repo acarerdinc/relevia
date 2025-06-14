@@ -5,7 +5,7 @@ import asyncio
 from typing import Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from datetime import datetime, timezone
+from datetime import datetime
 from core.logging_config import logger
 
 from db.models import Topic, Question, QuizQuestion, UserSkillProgress, DynamicTopicUnlock
@@ -386,7 +386,7 @@ class AdaptiveQuizService:
         """Update quiz question record with answer data"""
         quiz_question.user_answer = user_answer
         quiz_question.is_correct = is_correct
-        quiz_question.answered_at = datetime.now(timezone.utc)
+        quiz_question.answered_at = datetime.now()
         quiz_question.time_spent = time_spent
         quiz_question.user_action = action
         

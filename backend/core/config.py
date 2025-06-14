@@ -25,9 +25,24 @@ if is_vercel:
         default_database_url = default_database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
     print(f"[CONFIG] Using PostgreSQL database on Vercel: {default_database_url[:30]}...")
 else:
-    # Local development - use SQLite
-    default_database_url = "sqlite+aiosqlite:///./relevia.db"
-    print(f"[CONFIG] Using SQLite database for local development")
+    # Local development - check for DATABASE_URL in env
+    local_db_url = os.environ.get("DATABASE_URL")
+    if local_db_url:
+        # Use provided DATABASE_URL (PostgreSQL or SQLite)
+        default_database_url = local_db_url
+        # Add asyncpg driver if PostgreSQL
+        if "postgresql://" in default_database_url and "+asyncpg" not in default_database_url:
+            default_database_url = default_database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        print(f"[CONFIG] Using DATABASE_URL from environment: {default_database_url[:30]}...")
+    else:
+        # No database configured
+        raise ValueError(
+            "DATABASE_URL must be set for local development. "
+            "Options:\n"
+            "1. Use Supabase: Set DATABASE_URL to your Supabase connection string\n"
+            "2. Use local PostgreSQL: Set DATABASE_URL=postgresql://user:pass@localhost:5432/dbname\n"
+            "3. Copy .env.example to .env and configure"
+        )
 
 class Settings(BaseSettings):
     # Database

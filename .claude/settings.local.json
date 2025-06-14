@@ -51,7 +51,8 @@
       "Bash(head:*)",
       "Bash(awk:*)",
       "Bash(export TURSO_DATABASE_URL=\"libsql://relevia-acarerdinc.aws-eu-west-1.turso.io\")",
-      "Bash(export:*)"
+      "Bash(export:*)",
+      "Bash(diff:*)"
     ],
     "deny": []
   }

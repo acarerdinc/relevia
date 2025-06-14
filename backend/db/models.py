@@ -29,8 +29,8 @@ class Topic(Base):
     difficulty_max = Column(Integer, default=10)
     
     # Relationships
-    parent = relationship("Topic", remote_side=[id])
-    children = relationship("Topic")
+    parent = relationship("Topic", remote_side=[id], back_populates="children")
+    children = relationship("Topic", back_populates="parent")
     prerequisites = relationship(
         "Topic",
         secondary="topic_prerequisites",

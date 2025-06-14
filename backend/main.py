@@ -20,13 +20,7 @@ async def lifespan(app: FastAPI):
     if os.environ.get("VERCEL") == "1":
         logger.info("Running on Vercel - using existing database")
     else:
-        if not is_turso and engine is not None:
-            # Standard initialization for local development with async engine
-            async with engine.begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-            logger.info("✅ Database tables created/verified")
-        elif is_turso:
-            logger.info("Using Turso database - tables should already exist")
+        logger.info("Running locally - expecting existing database")
     
     yield
     # Shutdown

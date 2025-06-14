@@ -39,7 +39,8 @@
       "Bash(touch:*)",
       "Bash(sqlite3:*)",
       "Bash(psql:*)",
-      "Bash(rg:*)"
+      "Bash(rg:*)",
+      "Bash(sed:*)"
     ],
     "deny": []
   }

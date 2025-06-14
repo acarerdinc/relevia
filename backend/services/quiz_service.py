@@ -357,13 +357,14 @@ class AdaptiveQuizEngine:
             if is_correct:
                 session.correct_answers += 1
         
-        # Update mastery progress and get current status
+        # Use shared logic for mastery progression
+        from services.shared_quiz_logic import shared_quiz_logic
+        
         mastery_advancement = None
         if action == "answer" and is_correct is not None:
-            # Only use the mastery system - it handles all progress tracking
-            session_mastery = MasteryLevel(session.mastery_level)
-            mastery_advancement = await self.mastery_progress.record_mastery_answer(
-                db, session.user_id, question.topic_id, session_mastery, is_correct
+            # Use shared mastery progression logic
+            mastery_advancement = await shared_quiz_logic.process_answer_submission(
+                db, session.user_id, question.topic_id, is_correct, action
             )
             
             # Legacy skill update for confidence/skill_level (but not questions_answered)
@@ -376,30 +377,16 @@ class AdaptiveQuizEngine:
                 db, session.user_id, question.topic_id
             )
         
-        # Update user interest based on action
-        from services.dynamic_ontology_service import dynamic_ontology_service
-        await dynamic_ontology_service.update_user_interest(
+        # Use shared logic for interest updates
+        await shared_quiz_logic.update_user_interests(
             db, session.user_id, question.topic_id, action, time_spent
         )
         
-        # Check for topic unlocks after interest/proficiency update (true background task)
+        # Use shared logic for background subtopic generation
         unlocked_topics = []
-        if action == "answer" and is_correct is not None:
-            # Run topic unlocking as true background task - don't wait for it
-            async def background_subtopic_generation():
-                try:
-                    # Create new database session for background task
-                    from db.database import AsyncSessionLocal
-                    async with AsyncSessionLocal() as bg_db:
-                        await dynamic_ontology_service.check_and_unlock_subtopics(
-                            bg_db, session.user_id, question.topic_id
-                        )
-                        print(f"✅ Background subtopic generation completed for user {session.user_id}, topic {question.topic_id}")
-                except Exception as e:
-                    print(f"⚠️ Background topic unlock failed for user {session.user_id}: {e}")
-            
-            # Start background task without waiting
-            asyncio.create_task(background_subtopic_generation())
+        await shared_quiz_logic.trigger_background_subtopic_generation(
+            session.user_id, question.topic_id, action, is_correct
+        )
         
         await db.commit()
         

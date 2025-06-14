@@ -15,7 +15,6 @@ from db.models import (
     QuizSession, QuizQuestion
 )
 from services.gemini_service import gemini_service
-from services.dynamic_ontology_builder import dynamic_ontology_builder
 from core.logging_config import logger
 
 
@@ -45,8 +44,8 @@ class AdaptiveQuestionSelector:
         import time
         start_time = time.time()
         
-        # Check for new topics to unlock based on progress (hierarchical unlocking)
-        await dynamic_ontology_builder.check_and_unlock_progressive_topics(db, user_id)
+        # Use the same topic unlocking logic as focused mode (mastery-based, not accuracy-based)
+        # This is handled by dynamic_ontology_service in the background after answers are submitted
         
         # Get all unlocked topics for user
         unlocked_topics = await self._get_unlocked_topics(db, user_id)

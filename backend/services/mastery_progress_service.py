@@ -28,12 +28,31 @@ class MasteryProgressService:
         
         current_level = MasteryLevel(progress.current_mastery_level)
         mastery_questions = progress.mastery_questions_answered or {
-            "novice": 0, "competent": 0, "proficient": 0, "expert": 0, "master": 0
+            "novice": {"total": 0, "correct": 0}, 
+            "competent": {"total": 0, "correct": 0}, 
+            "proficient": {"total": 0, "correct": 0}, 
+            "expert": {"total": 0, "correct": 0}, 
+            "master": {"total": 0, "correct": 0}
         }
         
+        # Handle migration from old format if needed
+        if isinstance(mastery_questions.get(current_level.value, 0), int):
+            old_mastery = mastery_questions
+            mastery_questions = {
+                "novice": {"total": 0, "correct": 0}, 
+                "competent": {"total": 0, "correct": 0}, 
+                "proficient": {"total": 0, "correct": 0}, 
+                "expert": {"total": 0, "correct": 0}, 
+                "master": {"total": 0, "correct": 0}
+            }
+            for level, count in old_mastery.items():
+                if isinstance(count, int) and count > 0:
+                    mastery_questions[level] = {"total": count, "correct": count}
+        
         # Calculate progress for current level
-        questions_at_level = mastery_questions.get(current_level.value, 0)
-        correct_at_level = int(questions_at_level * (progress.correct_answers / max(progress.questions_answered, 1)))
+        level_stats = mastery_questions.get(current_level.value, {"total": 0, "correct": 0})
+        questions_at_level = level_stats["total"]
+        correct_at_level = level_stats["correct"]
         
         progress_info = get_mastery_progress(questions_at_level, current_level)
         
@@ -66,31 +85,57 @@ class MasteryProgressService:
         if is_correct:
             progress.correct_answers += 1
         
-        # Update mastery-specific stats
+        # Update mastery-specific stats - track BOTH total questions and correct answers per level
         mastery_questions = progress.mastery_questions_answered or {
-            "novice": 0, "competent": 0, "proficient": 0, "expert": 0, "master": 0
+            "novice": {"total": 0, "correct": 0}, 
+            "competent": {"total": 0, "correct": 0}, 
+            "proficient": {"total": 0, "correct": 0}, 
+            "expert": {"total": 0, "correct": 0}, 
+            "master": {"total": 0, "correct": 0}
         }
         
-        # Only increment the counter for CORRECT answers at the current mastery level
+        # Handle migration from old format (just numbers) to new format (objects)
         current_level = MasteryLevel(progress.current_mastery_level)
+        
+        # Migrate old format if needed
+        if isinstance(mastery_questions.get(current_level.value, 0), int):
+            print(f"🔄 Migrating old mastery format for user {user_id}")
+            old_mastery = mastery_questions
+            mastery_questions = {
+                "novice": {"total": 0, "correct": 0}, 
+                "competent": {"total": 0, "correct": 0}, 
+                "proficient": {"total": 0, "correct": 0}, 
+                "expert": {"total": 0, "correct": 0}, 
+                "master": {"total": 0, "correct": 0}
+            }
+            # Migrate old correct counts as both total and correct (assuming 100% accuracy for old data)
+            for level, count in old_mastery.items():
+                if isinstance(count, int) and count > 0:
+                    mastery_questions[level] = {"total": count, "correct": count}
+        
+        # Increment counters for current mastery level
+        level_stats = mastery_questions.get(current_level.value, {"total": 0, "correct": 0})
+        level_stats["total"] += 1
         if is_correct:
-            mastery_questions[current_level.value] += 1
-            progress.mastery_questions_answered = mastery_questions
-            
-            # Force SQLAlchemy to detect the JSON field change
-            from sqlalchemy.orm import attributes
-            attributes.flag_modified(progress, "mastery_questions_answered")
+            level_stats["correct"] += 1
+        
+        mastery_questions[current_level.value] = level_stats
+        progress.mastery_questions_answered = mastery_questions
+        
+        # Force SQLAlchemy to detect the JSON field change
+        from sqlalchemy.orm import attributes
+        attributes.flag_modified(progress, "mastery_questions_answered")
         
         # Check for mastery level advancement
-        questions_at_current = mastery_questions.get(current_level.value, 0)
+        questions_at_current = level_stats["total"]
+        correct_answers_at_level = level_stats["correct"]
         
-        print(f"🔍 Mastery tracking: User {user_id}, Topic {topic_id}, Level {current_level.value}, Correct: {is_correct}, Count now: {questions_at_current}")
+        print(f"🔍 Mastery tracking: User {user_id}, Topic {topic_id}, Level {current_level.value}, Total: {questions_at_current}, Correct: {correct_answers_at_level}")
         
-        # Since questions_at_current now represents only correct answers, use it directly
         overall_accuracy = progress.correct_answers / progress.questions_answered if progress.questions_answered > 0 else 0
-        correct_answers_at_level = questions_at_current  # Now this is already correct answers only
+        level_accuracy = correct_answers_at_level / questions_at_current if questions_at_current > 0 else 0
         
-        print(f"🎯 Advancement check: {correct_answers_at_level} correct answers at {current_level.value}, overall accuracy {overall_accuracy:.2%}")
+        print(f"🎯 Advancement check: {correct_answers_at_level}/{questions_at_current} ({level_accuracy:.1%}) at {current_level.value}, overall accuracy {overall_accuracy:.2%}")
         
         advanced = False
         new_level = current_level
@@ -103,16 +148,19 @@ class MasteryProgressService:
                 new_level = next_level
                 advanced = True
                 
-                # Reset the counter for the new level (start tracking at new level)
-                mastery_questions[next_level.value] = 1  # This question counts for the new level
-                mastery_questions[current_level.value] = mastery_questions.get(current_level.value, 0) - 1  # Remove from old level
+                # Start tracking at new level (this question counts for the new level)
+                next_level_stats = mastery_questions.get(next_level.value, {"total": 0, "correct": 0})
+                next_level_stats["total"] += 1
+                if is_correct:
+                    next_level_stats["correct"] += 1
+                mastery_questions[next_level.value] = next_level_stats
                 progress.mastery_questions_answered = mastery_questions
                 
                 # Force SQLAlchemy to detect the JSON field change
                 from sqlalchemy.orm import attributes
                 attributes.flag_modified(progress, "mastery_questions_answered")
                 
-                print(f"🎉 LEVEL UP! {current_level.value} → {next_level.value}, starting fresh with 1 question at {next_level.value}")
+                print(f"🎉 LEVEL UP! {current_level.value} → {next_level.value}, starting fresh at {next_level.value} with 1 question")
         
         # Update tree navigation capability
         if new_level.value in [TREE_NAVIGATION_THRESHOLD.value, MasteryLevel.PROFICIENT.value, MasteryLevel.EXPERT.value, MasteryLevel.MASTER.value]:

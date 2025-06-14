@@ -112,16 +112,21 @@ class AdaptiveQuizService:
             action, is_correct, time_spent, question.difficulty
         )
         
-        # Update user progress and track interests
+        # Use shared logic for mastery progression (same as focused mode)
+        from services.shared_quiz_logic import shared_quiz_logic
+        
         learning_progress = 0.0
         mastery_advancement = None
         
         if action == "answer" and is_correct is not None:
+            # Update skill/confidence only (not question counters)
             learning_progress = await learning_progress_calculator.update_adaptive_user_progress(
                 db, session.user_id, topic.id, is_correct, question.difficulty
             )
-            mastery_advancement = await self._record_mastery_progress(
-                db, session.user_id, topic.id, is_correct
+            
+            # Use shared mastery progression logic (same as focused mode)
+            mastery_advancement = await shared_quiz_logic.process_answer_submission(
+                db, session.user_id, topic.id, is_correct, action
             )
         
         # Track comprehensive interest signals
@@ -145,26 +150,13 @@ class AdaptiveQuizService:
             db, session.user_id, topic.id, engagement_signal, learning_progress
         )
         
-        # Check for topic unlocks and discoveries
+        # Use shared logic for background subtopic generation (same as focused mode)
         unlocked_topics = []
         new_interests = []
         
-        if action == "answer" and is_correct is not None:
-            # Run topic unlocking as background task to avoid blocking response
-            async def background_subtopic_generation():
-                try:
-                    # Create new database session for background task
-                    from db.database import AsyncSessionLocal
-                    async with AsyncSessionLocal() as bg_db:
-                        await dynamic_ontology_service.check_and_unlock_subtopics(
-                            bg_db, session.user_id, topic.id
-                        )
-                        logger.info(f"✅ Background subtopic generation completed for user {session.user_id}, topic {topic.id}")
-                except Exception as e:
-                    logger.error(f"⚠️ Background topic unlock failed for user {session.user_id}: {e}")
-            
-            # Start background task without waiting
-            asyncio.create_task(background_subtopic_generation())
+        await shared_quiz_logic.trigger_background_subtopic_generation(
+            session.user_id, topic.id, action, is_correct
+        )
         
         if interest_update and interest_update.get("new_interests_discovered"):
             new_interests = interest_update["new_interests_discovered"]
@@ -403,19 +395,6 @@ class AdaptiveQuizService:
         )
         quiz_question.interest_signal = engagement_signal
     
-    async def _record_mastery_progress(self, db: AsyncSession, user_id: int, topic_id: int, is_correct: bool):
-        """Record answer in mastery system"""
-        try:
-            from services.mastery_progress_service import MasteryProgressService
-            from core.mastery_levels import MasteryLevel
-            
-            mastery_service = MasteryProgressService()
-            return await mastery_service.record_mastery_answer(
-                db, user_id, topic_id, MasteryLevel.NOVICE, is_correct
-            )
-        except Exception as e:
-            logger.warning(f"Failed to record mastery progress: {e}")
-            return None
     
     def _validate_answer(self, user_answer: str, question: Question) -> bool:
         """Validate user answer against correct answer"""

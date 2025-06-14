@@ -77,13 +77,9 @@ class LearningProgressCalculator:
         progress.skill_level = max(0.0, min(10.0, old_skill_level + learning_delta))
         progress.confidence = max(0.0, min(10.0, old_confidence + confidence_delta))
         
-        # Update mastery level using proper mastery progression service
-        # (This will also update questions_answered and correct_answers)
-        from core.mastery_levels import MasteryLevel
-        current_mastery = MasteryLevel(progress.current_mastery_level or "novice")
-        mastery_result = await self.mastery_service.record_mastery_answer(
-            db, user_id, topic_id, current_mastery, is_correct
-        )
+        # DO NOT call mastery service here - it causes double counting
+        # Mastery progression should be handled separately by the calling service
+        # This method should only update skill_level and confidence, not question counters
         
         await db.commit()
         

@@ -253,12 +253,23 @@ Return ONLY this JSON:
             ('algorithms', 'data structures'),
             ('neural networks', 'deep learning'),
             ('supervised learning', 'machine learning'),
-            ('web development', 'software engineering')
+            ('web development', 'software engineering'),
+            # AI application overlaps
+            ('applications of ai', 'ai in'),  # Generic "applications" conflicts with specific "ai in X"
+            ('applications of ai', 'business'),
+            ('applications of ai', 'autonomous'),
+            ('applications of ai', 'healthcare'),
+            ('applications of ai', 'finance')
         ]
         
         for pair in problematic_pairs:
-            if pair[0] in topic_names and pair[1] in topic_names:
-                print(f"⚠️ MECE violation detected: '{pair[0]}' and '{pair[1]}' overlap")
+            # Check for exact matches or substring matches
+            match_0 = any(pair[0] in name for name in topic_names)
+            match_1 = any(pair[1] in name for name in topic_names)
+            
+            if match_0 and match_1:
+                matching_names = [name for name in topic_names if pair[0] in name or pair[1] in name]
+                print(f"⚠️ MECE violation detected: '{pair[0]}' and '{pair[1]}' overlap in topics: {matching_names}")
                 return False
         
         # Check for duplicate or very similar names
@@ -291,7 +302,7 @@ Return ONLY this JSON:
                         break
             
             coverage_ratio = len(set(covered_domains)) / len(expected_domains)
-            if coverage_ratio < 0.6:  # Should cover at least 60% of major AI domains
+            if coverage_ratio < 0.4:  # Should cover at least 40% of major AI domains (relaxed)
                 print(f"⚠️ AI subtopics only cover {coverage_ratio:.0%} of major domains - not collectively exhaustive")
                 return False
         

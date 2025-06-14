@@ -11,6 +11,7 @@ Base = declarative_base()
 
 # Configure engine based on database type
 is_postgresql = database_url.startswith("postgresql")
+is_turso = database_url.startswith("libsql") or database_url.startswith("turso")
 is_vercel = os.environ.get("VERCEL", "0") == "1"
 
 if is_postgresql and is_vercel:

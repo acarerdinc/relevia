@@ -31,20 +31,29 @@ async def ensure_database_initialized():
             else:
                 database_url = "sqlite+aiosqlite:///./relevia.db"
         
-        # Convert postgresql:// to postgresql+asyncpg:// for async support
-        if database_url and database_url.startswith("postgresql://"):
-            database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        # Convert postgresql:// or postgres:// to postgresql+asyncpg:// for async support
+        if database_url:
+            # Check if it's postgres:// (transaction pooler) vs postgresql:// (direct)
+            if database_url.startswith("postgres://"):
+                database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
+            elif database_url.startswith("postgresql://"):
+                database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            
             # For Supabase connections, ensure proper SSL handling
-            if "supabase.co" in database_url:
+            if "supabase.co" in database_url or "pooler.supabase.com" in database_url:
                 # asyncpg requires different SSL parameter format
                 # Remove any existing ssl/sslmode parameters
                 import re
-                database_url = re.sub(r'[?&](ssl|sslmode)=[^&]*', '', database_url)
+                database_url = re.sub(r'[?&](ssl|sslmode|pgbouncer)=[^&]*', '', database_url)
                 # Add asyncpg-compatible SSL parameter
                 if "?" in database_url:
                     database_url += "&ssl=require"
                 else:
                     database_url += "?ssl=require"
+                
+                # For transaction pooler, disable prepared statements
+                if ":6543" in database_url:
+                    database_url += "&server_settings={'jit':'off'}"
         
         # Log connection details (without password)
         if database_url and "://" in database_url:

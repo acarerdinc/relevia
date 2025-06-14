@@ -9,19 +9,28 @@ is_vercel = os.environ.get("VERCEL", "0") == "1"
 postgres_url = os.environ.get("POSTGRES_URL")
 
 # Convert postgresql:// to postgresql+asyncpg:// for async support
-if postgres_url and postgres_url.startswith("postgresql://"):
-    postgres_url = postgres_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+if postgres_url:
+    # Check if it's postgres:// (transaction pooler) vs postgresql:// (direct)
+    if postgres_url.startswith("postgres://"):
+        postgres_url = postgres_url.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif postgres_url.startswith("postgresql://"):
+        postgres_url = postgres_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    
     # For Supabase connections, ensure proper SSL handling
-    if "supabase.co" in postgres_url:
+    if "supabase.co" in postgres_url or "pooler.supabase.com" in postgres_url:
         # asyncpg requires different SSL parameter format
         # Remove any existing ssl/sslmode parameters
         import re
-        postgres_url = re.sub(r'[?&](ssl|sslmode)=[^&]*', '', postgres_url)
+        postgres_url = re.sub(r'[?&](ssl|sslmode|pgbouncer)=[^&]*', '', postgres_url)
         # Add asyncpg-compatible SSL parameter
         if "?" in postgres_url:
             postgres_url += "&ssl=require"
         else:
             postgres_url += "?ssl=require"
+        
+        # For transaction pooler, disable prepared statements
+        if ":6543" in postgres_url:
+            postgres_url += "&server_settings={'jit':'off'}"
 
 # Determine database URL based on environment
 if is_vercel and not postgres_url:

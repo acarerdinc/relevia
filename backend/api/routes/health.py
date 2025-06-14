@@ -10,7 +10,12 @@ router = APIRouter()
 @router.get("/")
 @router.get("")
 async def health_check():
-    return {"status": "healthy", "service": "relevia-api"}
+    return {
+        "status": "healthy", 
+        "service": "relevia-api",
+        "version": "1.0.1",  # Dummy change to trigger deployment
+        "deployed_at": "2025-06-14"
+    }
 
 @router.get("/db-check")
 async def database_check(db: AsyncSession = Depends(get_db)):

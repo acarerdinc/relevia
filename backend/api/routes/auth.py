@@ -9,6 +9,7 @@ from typing import Optional
 from pydantic import BaseModel, EmailStr
 
 from db.database import get_db
+from db.auth_session import get_auth_db
 from db.models import User
 from core.config import settings
 
@@ -56,7 +57,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
-async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
+async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_auth_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -95,7 +96,7 @@ async def register(user_data: UserRegister, db: AsyncSession = Depends(get_db)):
     )
 
 @router.post("/login", response_model=Token)
-async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
+async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_auth_db)):
     # OAuth2PasswordRequestForm uses 'username' field, but we'll treat it as email
     from core.logging_config import logger
     

@@ -8,25 +8,12 @@ from core.config import settings
 database_url = settings.DATABASE_URL
 
 engine_kwargs = {
-    "echo": False if database_url.startswith("postgresql") else True,
+    "echo": False,  # Disable SQL logging for production
 }
 
-# For Supabase transaction pooler, use special configuration
-if "pooler.supabase.com:6543" in database_url:
-    # CRITICAL: Disable pool_pre_ping as it causes prepared statement issues with pgbouncer
-    engine_kwargs["pool_pre_ping"] = False
-    # Use NullPool to prevent connection reuse
-    engine_kwargs["poolclass"] = NullPool
-    # Disable prepared statements completely
-    engine_kwargs["connect_args"] = {
-        "statement_cache_size": 0,  # Disable prepared statements
-        "server_settings": {
-            "jit": "off"
-        },
-        "command_timeout": 60
-    }
-else:
-    # For direct connections, use pool_pre_ping
+# For Turso/libsql, no special configuration needed
+# For PostgreSQL connections, use pool_pre_ping
+if database_url.startswith("postgresql"):
     engine_kwargs["pool_pre_ping"] = True
 
 engine = create_async_engine(database_url, **engine_kwargs)

@@ -5,42 +5,25 @@ import os
 # Check if running on Vercel
 is_vercel = os.environ.get("VERCEL", "0") == "1"
 
-# Get database URL from environment
-postgres_url = os.environ.get("POSTGRES_URL")
-print(f"[CONFIG] Raw POSTGRES_URL: {postgres_url[:50] if postgres_url else 'None'}...")
+# Database URL configuration
+turso_url = os.environ.get("TURSO_DATABASE_URL")
+turso_token = os.environ.get("TURSO_AUTH_TOKEN")
 
-# Convert postgresql:// to postgresql+asyncpg:// for async support
-if postgres_url:
-    # Check if it's postgres:// (transaction pooler) vs postgresql:// (direct)
-    if postgres_url.startswith("postgres://"):
-        postgres_url = postgres_url.replace("postgres://", "postgresql+asyncpg://", 1)
-    elif postgres_url.startswith("postgresql://"):
-        postgres_url = postgres_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    
-    # For Supabase connections, ensure proper SSL handling
-    if "supabase.co" in postgres_url or "pooler.supabase.com" in postgres_url:
-        # asyncpg requires different SSL parameter format
-        # Remove any existing ssl/sslmode parameters
-        import re
-        postgres_url = re.sub(r'[?&](ssl|sslmode|pgbouncer)=[^&]*', '', postgres_url)
-        # Add asyncpg-compatible SSL parameter
-        if "?" in postgres_url:
-            postgres_url += "&ssl=require"
-        else:
-            postgres_url += "?ssl=require"
-        
-        # For transaction pooler, we'll need to handle prepared statements differently
-        # Don't add server_settings to URL - it needs to be passed to create_async_engine
-
-# Determine database URL based on environment
-if is_vercel and not postgres_url:
-    default_database_url = "sqlite+aiosqlite:////tmp/relevia.db"
+if turso_url and turso_token:
+    # Use Turso database with authentication
+    default_database_url = f"{turso_url}?authToken={turso_token}"
+    print(f"[CONFIG] Using Turso database: {turso_url[:50]}...")
 else:
-    default_database_url = "sqlite+aiosqlite:///./relevia.db"
+    # Fallback to SQLite for local development
+    if is_vercel:
+        default_database_url = "sqlite+aiosqlite:////tmp/relevia.db"
+    else:
+        default_database_url = "sqlite+aiosqlite:///./relevia.db"
+    print(f"[CONFIG] Using SQLite database: {default_database_url}")
 
 class Settings(BaseSettings):
     # Database
-    DATABASE_URL: str = postgres_url or default_database_url
+    DATABASE_URL: str = default_database_url
     
     # Redis (optional, not used but may be in .env)
     REDIS_URL: Optional[str] = None

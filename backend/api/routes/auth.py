@@ -9,7 +9,6 @@ from typing import Optional
 from pydantic import BaseModel, EmailStr
 
 from db.database import get_db
-from db.auth_session import get_auth_db
 from db.models import User
 from core.config import settings
 
@@ -57,7 +56,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
-async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_auth_db)):
+async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -96,53 +95,16 @@ async def register(user_data: UserRegister, db: AsyncSession = Depends(get_db)):
     )
 
 @router.post("/login", response_model=Token)
-async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_auth_db)):
+async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
     # OAuth2PasswordRequestForm uses 'username' field, but we'll treat it as email
     from core.logging_config import logger
-    
     logger.info(f"Login attempt for: {form_data.username}")
     
-    try:
-        # Simple direct query approach
-        stmt = select(User).where(User.email == form_data.username)
-        result = await db.execute(stmt)
-        user = result.scalar_one_or_none()
-    except Exception as e:
-        logger.error(f"Database error during login for {form_data.username}: {str(e)}")
-        import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        # Try fallback with raw SQL
-        try:
-            query = text("SELECT * FROM users WHERE email = :email LIMIT 1")
-            result = await db.execute(query, {"email": form_data.username})
-            row = result.first()
-            if row:
-                user = User(
-                    id=row.id,
-                    username=row.username,
-                    email=row.email,
-                    hashed_password=row.hashed_password
-                )
-            else:
-                user = None
-        except Exception as e2:
-            logger.error(f"Fallback query also failed: {str(e2)}")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect email or password",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+    result = await db.execute(select(User).where(User.email == form_data.username))
+    user = result.scalar_one_or_none()
     
-    if not user:
-        logger.warning(f"User not found: {form_data.username}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    if not verify_password(form_data.password, user.hashed_password):
-        logger.warning(f"Invalid password for: {form_data.username}")
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        logger.warning(f"Failed login attempt for: {form_data.username}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",

@@ -21,6 +21,9 @@ async def ensure_database_initialized():
     if _initialized:
         return
     
+    # Mark as initialized immediately to prevent concurrent attempts
+    _initialized = True
+    
     try:
         # Get database URL from environment
         database_url = os.environ.get("POSTGRES_URL")

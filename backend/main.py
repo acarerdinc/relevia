@@ -18,9 +18,10 @@ async def lifespan(app: FastAPI):
     
     # Check if running on Vercel
     if os.environ.get("VERCEL") == "1":
-        # Use Vercel-specific initialization
-        from db.vercel_init import ensure_database_initialized
-        await ensure_database_initialized()
+        # Skip initialization - database is already set up
+        logger.info("Running on Vercel - skipping database initialization")
+        # from db.vercel_init import ensure_database_initialized
+        # await ensure_database_initialized()
     else:
         # Standard initialization for local development
         async with engine.begin() as conn:
@@ -43,15 +44,16 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Database initialization middleware for Vercel
-if os.environ.get("VERCEL") == "1":
-    @app.middleware("http")
-    async def ensure_db_initialized(request: Request, call_next):
-        # Skip for health checks
-        if "/health" not in request.url.path:
-            from db.vercel_init import ensure_database_initialized
-            await ensure_database_initialized()
-        return await call_next(request)
+# Database initialization middleware for Vercel - DISABLED
+# The database is already initialized, no need to check on every request
+# if os.environ.get("VERCEL") == "1":
+#     @app.middleware("http")
+#     async def ensure_db_initialized(request: Request, call_next):
+#         # Skip for health checks
+#         if "/health" not in request.url.path:
+#             from db.vercel_init import ensure_database_initialized
+#             await ensure_database_initialized()
+#         return await call_next(request)
 
 # API request logging middleware
 @app.middleware("http")

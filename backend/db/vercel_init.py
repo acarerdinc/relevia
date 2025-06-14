@@ -70,21 +70,27 @@ async def ensure_database_initialized():
                 logger.info(f"Database connection: {database_url}")
         
         # Create engine for this initialization
-        engine_kwargs = {"echo": False, "pool_pre_ping": True}
+        engine_kwargs = {"echo": False}
         
-        # For Supabase transaction pooler, use NullPool for serverless
+        # For Supabase transaction pooler, use special configuration
         if "pooler.supabase.com:6543" in database_url:
             from sqlalchemy.pool import NullPool
+            # CRITICAL: Disable pool_pre_ping as it causes prepared statement issues with pgbouncer
+            engine_kwargs["pool_pre_ping"] = False
+            # Use NullPool to prevent connection reuse
             engine_kwargs["poolclass"] = NullPool
-            # Disable JIT and set timeout
+            # Disable prepared statements completely
             engine_kwargs["connect_args"] = {
+                "statement_cache_size": 0,  # Disable prepared statements
+                "prepared_statement_cache_size": 0,
                 "server_settings": {
-                    "jit": "off",
-                    # Disable prepared statements via server setting
-                    "plan_cache_mode": "force_custom_plan"
+                    "jit": "off"
                 },
                 "command_timeout": 60
             }
+        else:
+            # For direct connections, use pool_pre_ping
+            engine_kwargs["pool_pre_ping"] = True
         
         engine = create_async_engine(database_url, **engine_kwargs)
         

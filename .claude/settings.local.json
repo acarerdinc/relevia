@@ -45,7 +45,8 @@
       "WebFetch(domain:vercel.com)",
       "Bash(cat:*)",
       "Bash(cp:*)",
-      "Bash(tail:*)"
+      "Bash(tail:*)",
+      "Bash(jq:*)"
     ],
     "deny": []
   }

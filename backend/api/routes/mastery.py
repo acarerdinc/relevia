@@ -150,7 +150,9 @@ async def get_topics_with_mastery_info(
     for topic in all_topics:
         mastery_info = mastery_by_topic.get(topic.id, {
             "current_level": "novice",
-            "progress": {"progress_percent": 0, "questions_needed": 8, "is_max_level": False},
+            "progress": {"progress_percent": 0, "correct_answers_needed": 8, "is_max_level": False},
+            "correct_answers_at_level": 0,
+            "mastery_correct_answers": {"novice": 0, "competent": 0, "proficient": 0, "expert": 0, "master": 0},
             "can_navigate": False
         })
         
@@ -161,6 +163,8 @@ async def get_topics_with_mastery_info(
             "parent_id": topic.parent_id,
             "mastery_level": mastery_info["current_level"],
             "mastery_progress": mastery_info["progress"],
+            "correct_answers_at_level": mastery_info.get("correct_answers_at_level", 0),
+            "mastery_correct_answers": mastery_info.get("mastery_correct_answers", {"novice": 0, "competent": 0, "proficient": 0, "expert": 0, "master": 0}),
             "can_navigate_tree": mastery_info.get("can_navigate", False)
         })
     

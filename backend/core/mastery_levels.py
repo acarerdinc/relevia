@@ -23,22 +23,13 @@ MASTERY_PROGRESSION = [
     MasteryLevel.MASTER
 ]
 
-# Questions required to advance to next level
-QUESTIONS_PER_LEVEL = {
-    MasteryLevel.NOVICE: 8,      # 8 questions to become competent
-    MasteryLevel.COMPETENT: 12,  # 12 questions to become proficient
-    MasteryLevel.PROFICIENT: 15, # 15 questions to become expert
-    MasteryLevel.EXPERT: 20,     # 20 questions to become master
+# CORRECT answers required to advance to next level (much simpler!)
+CORRECT_ANSWERS_PER_LEVEL = {
+    MasteryLevel.NOVICE: 4,      # 8 correct answers to become competent
+    MasteryLevel.COMPETENT: 12,  # 12 correct answers to become proficient
+    MasteryLevel.PROFICIENT: 15, # 15 correct answers to become expert
+    MasteryLevel.EXPERT: 20,     # 20 correct answers to become master
     MasteryLevel.MASTER: 0       # Master is final level
-}
-
-# Accuracy threshold to advance (percentage)
-ACCURACY_THRESHOLD = {
-    MasteryLevel.NOVICE: 0.70,     # 70% accuracy needed
-    MasteryLevel.COMPETENT: 0.75,  # 75% accuracy needed  
-    MasteryLevel.PROFICIENT: 0.80, # 80% accuracy needed
-    MasteryLevel.EXPERT: 0.85,     # 85% accuracy needed
-    MasteryLevel.MASTER: 0.90      # 90% accuracy needed (for maintaining)
 }
 
 # Minimum level required for tree navigation (unlocking new topics)
@@ -83,35 +74,29 @@ def get_next_mastery_level(current_level: MasteryLevel) -> MasteryLevel | None:
     except ValueError:
         return MasteryLevel.NOVICE
 
-def can_advance_mastery(questions_answered: int, correct_answers: int, current_level: MasteryLevel) -> bool:
-    """Check if user can advance to next mastery level"""
+def can_advance_mastery(correct_answers: int, current_level: MasteryLevel) -> bool:
+    """Check if user can advance to next mastery level (simplified - only correct answers matter!)"""
     if current_level == MasteryLevel.MASTER:
         return False
         
-    required_questions = QUESTIONS_PER_LEVEL[current_level]
-    required_accuracy = ACCURACY_THRESHOLD[current_level]
-    
-    if questions_answered < required_questions:
-        return False
-        
-    accuracy = correct_answers / questions_answered if questions_answered > 0 else 0
-    return accuracy >= required_accuracy
+    required_correct = CORRECT_ANSWERS_PER_LEVEL[current_level]
+    return correct_answers >= required_correct
 
-def get_mastery_progress(questions_answered: int, current_level: MasteryLevel) -> Dict:
-    """Get progress towards next mastery level"""
+def get_mastery_progress(correct_answers: int, current_level: MasteryLevel) -> Dict:
+    """Get progress towards next mastery level (based on correct answers only)"""
     if current_level == MasteryLevel.MASTER:
         return {
             "progress_percent": 100,
-            "questions_needed": 0,
+            "correct_answers_needed": 0,
             "is_max_level": True
         }
     
-    required_questions = QUESTIONS_PER_LEVEL[current_level]
-    progress_percent = min(100, (questions_answered / required_questions) * 100)
-    questions_needed = max(0, required_questions - questions_answered)
+    required_correct = CORRECT_ANSWERS_PER_LEVEL[current_level]
+    progress_percent = min(100, (correct_answers / required_correct) * 100)
+    correct_answers_needed = max(0, required_correct - correct_answers)
     
     return {
         "progress_percent": progress_percent,
-        "questions_needed": questions_needed,
+        "correct_answers_needed": correct_answers_needed,
         "is_max_level": False
     }

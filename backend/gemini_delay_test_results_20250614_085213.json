@@ -1,0 +1,213 @@
+{
+  "summary": {
+    "total_tests": 20,
+    "successful": 20,
+    "failed": 0,
+    "mean_delay": 1.590993916988373,
+    "median_delay": 1.380773663520813,
+    "min_delay": 0.9490807056427002,
+    "max_delay": 3.129875898361206
+  },
+  "detailed_results": [
+    {
+      "test_num": 1,
+      "topic": "Machine Learning",
+      "difficulty": 1,
+      "mastery_level": "novice",
+      "delay": 1.4606153964996338,
+      "success": true,
+      "error": "",
+      "timestamp": "2025-06-14T08:51:33.282189"
+    },
+    {
+      "test_num": 2,
+      "topic": "Neural Networks",
+      "difficulty": 3,
+      "mastery_level": "competent",
+      "delay": 1.1229031085968018,
+      "success": true,
+      "error": "",
+      "timestamp": "2025-06-14T08:51:34.906521"
+    },
+    {
+      "test_num": 3,
+      "topic": "Computer Vision",
+      "difficulty": 5,
+      "mastery_level": "proficient",
+      "delay": 1.22121000289917,
+      "success": true,
+      "error": "",
+      "timestamp": "2025-06-14T08:51:36.629122"
+    },
+    {
+      "test_num": 4,
+      "topic": "Natural Language Processing",
+      "difficulty": 7,
+      "mastery_level": "expert",
+      "delay": 1.5157239437103271,
+      "success": true,
+      "error": "",
+      "timestamp": "2025-06-14T08:51:38.645716"
+    },
+    {
+      "test_num": 5,
+      "topic": "Reinforcement Learning",
+      "difficulty": 9,
+      "mastery_level": "master",
+      "delay": 3.129875898361206,
+      "success": true,
+      "error": "",
+      "timestamp": "2025-06-14T08:51:42.276915"
+    },
+    {
+      "test_num": 6,
+      "topic": "Machine Learning",
+      "difficulty": 1,
+      "mastery_level": "novice",
+      "delay": 1.3009319305419922,
+      "success": true,
+      "error": "",
+      "timestamp": "2025-06-14T08:51:44.079195"
+    },
+    {
+      "test_num": 7,
+      "topic": "Neural Networks",
+      "difficulty": 3,
+      "mastery_level": "competent",
+      "delay": 0.9608108997344971,
+      "success": true,
+      "error": "",
+      "timestamp": "2025-06-14T08:51:45.541345"
+    },
+    {
+      "test_num": 8,
+      "topic": "Computer Vision",
+      "difficulty": 5,
+      "mastery_level": "proficient",
+      "delay": 0.9837782382965088,
+      "success": true,
+      "error": "",
+      "timestamp": "2025-06-14T08:51:47.026284"
+    },
+    {
+      "test_num": 9,
+      "topic": "Natural Language Processing",
+      "difficulty": 7,
+      "mastery_level": "expert",
+      "delay": 1.965071678161621,
+      "success": true,
+      "error": "",
+      "timestamp": "2025-06-14T08:51:49.492048"
+    },
+    {
+      "test_num": 10,
+      "topic": "Reinforcement Learning",
+      "difficulty": 9,
+      "mastery_level": "master",
+      "delay": 2.709813117980957,
+      "success": true,
+      "error": "",
+      "timestamp": "2025-06-14T08:51:52.703189"
+    },
+    {
+      "test_num": 11,
+      "topic": "Machine Learning",
+      "difficulty": 1,
+      "mastery_level": "novice",
+      "delay": 0.9918251037597656,
+      "success": true,
+      "error": "",
+      "timestamp": "2025-06-14T08:51:54.196396"
+    },
+    {
+      "test_num": 12,
+      "topic": "Neural Networks",
+      "difficulty": 3,
+      "mastery_level": "competent",
+      "delay": 1.0003581047058105,
+      "success": true,
+      "error": "",
+      "timestamp": "2025-06-14T08:51:55.698088"
+    },
+    {
+      "test_num": 13,
+      "topic": "Computer Vision",
+      "difficulty": 5,
+      "mastery_level": "proficient",
+      "delay": 1.1970958709716797,
+      "success": true,
+      "error": "",
+      "timestamp": "2025-06-14T08:51:57.396469"
+    },
+    {
+      "test_num": 14,
+      "topic": "Natural Language Processing",
+      "difficulty": 7,
+      "mastery_level": "expert",
+      "delay": 2.200277090072632,
+      "success": true,
+      "error": "",
+      "timestamp": "2025-06-14T08:52:00.097156"
+    },
+    {
+      "test_num": 15,
+      "topic": "Reinforcement Learning",
+      "difficulty": 9,
+      "mastery_level": "master",
+      "delay": 2.688570022583008,
+      "success": true,
+      "error": "",
+      "timestamp": "2025-06-14T08:52:03.287069"
+    },
+    {
+      "test_num": 16,
+      "topic": "Machine Learning",
+      "difficulty": 1,
+      "mastery_level": "novice",
+      "delay": 0.9490807056427002,
+      "success": true,
+      "error": "",
+      "timestamp": "2025-06-14T08:52:04.737137"
+    },
+    {
+      "test_num": 17,
+      "topic": "Neural Networks",
+      "difficulty": 3,
+      "mastery_level": "competent",
+      "delay": 1.0507519245147705,
+      "success": true,
+      "error": "",
+      "timestamp": "2025-06-14T08:52:06.288824"
+    },
+    {
+      "test_num": 18,
+      "topic": "Computer Vision",
+      "difficulty": 5,
+      "mastery_level": "proficient",
+      "delay": 1.4999339580535889,
+      "success": true,
+      "error": "",
+      "timestamp": "2025-06-14T08:52:08.290092"
+    },
+    {
+      "test_num": 19,
+      "topic": "Natural Language Processing",
+      "difficulty": 7,
+      "mastery_level": "expert",
+      "delay": 1.5000202655792236,
+      "success": true,
+      "error": "",
+      "timestamp": "2025-06-14T08:52:10.291533"
+    },
+    {
+      "test_num": 20,
+      "topic": "Reinforcement Learning",
+      "difficulty": 9,
+      "mastery_level": "master",
+      "delay": 2.3712310791015625,
+      "success": true,
+      "error": "",
+      "timestamp": "2025-06-14T08:52:13.165388"
+    }
+  ]
+}

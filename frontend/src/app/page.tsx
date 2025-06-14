@@ -19,8 +19,10 @@ export default function Home() {
   };
 
   const handleStartLearningWithSession = (sessionId: number, topicId: number) => {
+    console.log('🎯 handleStartLearningWithSession called:', { sessionId, topicId });
     setStartSession({ sessionId, topicId });
     setCurrentView('learning');
+    console.log('✅ View changed to learning, startSession set');
   };
 
   const handleTopicsUnlocked = () => {

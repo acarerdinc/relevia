@@ -68,24 +68,41 @@ class SharedQuizLogic:
         Unified background subtopic generation logic used by both modes
         """
         
+        print(f"🔍 trigger_background_subtopic_generation called: user={user_id}, topic={topic_id}, action={action}, is_correct={is_correct}")
+        
         if action != "answer" or is_correct is None:
+            print(f"⏭️ Skipping subtopic generation: action={action}, is_correct={is_correct}")
             return
             
         # Run topic unlocking as true background task - don't wait for it
         async def background_subtopic_generation():
             try:
+                print(f"🚀 Starting background subtopic generation for user {user_id}, topic {topic_id}")
                 # Create new database session for background task
                 from db.database import AsyncSessionLocal
                 async with AsyncSessionLocal() as bg_db:
-                    await dynamic_ontology_service.check_and_unlock_subtopics(
-                        bg_db, user_id, topic_id
-                    )
-                    print(f"✅ Background subtopic generation completed for user {user_id}, topic {topic_id}")
+                    try:
+                        result = await dynamic_ontology_service.check_and_unlock_subtopics(
+                            bg_db, user_id, topic_id
+                        )
+                        print(f"✅ Background subtopic generation completed for user {user_id}, topic {topic_id}. Result: {len(result) if result else 0} topics")
+                    except Exception as inner_e:
+                        # Make sure to rollback on error
+                        await bg_db.rollback()
+                        raise inner_e
             except Exception as e:
+                import traceback
                 print(f"⚠️ Background topic unlock failed for user {user_id}: {e}")
+                print(f"Traceback: {traceback.format_exc()}")
+                # Log to error logger as well
+                error_logger = logger.getChild("errors")
+                error_logger.error(f"Background subtopic generation failed for user {user_id}, topic {topic_id}: {e}")
+                error_logger.error(f"Stack trace:\n{traceback.format_exc()}")
         
         # Start background task without waiting
-        asyncio.create_task(background_subtopic_generation())
+        task = asyncio.create_task(background_subtopic_generation())
+        # Add a name for debugging
+        task.set_name(f"subtopic_gen_{user_id}_{topic_id}")
     
     async def update_user_interests(
         self,

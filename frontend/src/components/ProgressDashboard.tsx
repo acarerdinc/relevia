@@ -267,9 +267,14 @@ export function ProgressDashboard({ onBack, onStartLearning }: ProgressDashboard
         onBack();
       }
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to start learning session:', error);
-      alert(`Unable to start learning "${node.name}". Please try again.`);
+      console.error('Error details:', {
+        message: error?.message,
+        response: error?.response,
+        stack: error?.stack
+      });
+      alert(`Unable to start learning "${node.name}". Error: ${error?.message || 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
@@ -892,9 +897,10 @@ export function ProgressDashboard({ onBack, onStartLearning }: ProgressDashboard
                     <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
                       <button
                         onClick={() => handleStartLearning(selectedNode)}
-                        className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                        disabled={loading}
+                        className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium"
                       >
-                        🚀 Start Learning
+                        {loading ? '⏳ Starting...' : '🚀 Start Learning'}
                       </button>
                     </div>
                   </>

@@ -5,6 +5,7 @@ from db.database import get_db
 from db.models import User, UserSkillProgress, Topic, QuizSession, QuizQuestion, Question
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
+from services.mastery_progress_service import MasteryProgressService
 
 router = APIRouter()
 
@@ -76,6 +77,16 @@ async def get_user_progress(user_id: int, db: AsyncSession = Depends(get_db)):
             confidence = progress.confidence or 0.0
             unlocked_at = progress.unlocked_at.isoformat() if progress.unlocked_at else None
             mastery_questions_answered = progress.mastery_questions_answered or {"novice": 0, "competent": 0, "proficient": 0, "expert": 0, "master": 0}
+            
+            # Add explicit field for current level's correct answers
+            correct_answers_at_current_level = mastery_questions_answered.get(current_mastery_level, 0)
+            
+            # Add individual fields for each level (for frontend compatibility)
+            novice_correct_answers = mastery_questions_answered.get("novice", 0)
+            competent_correct_answers = mastery_questions_answered.get("competent", 0)
+            proficient_correct_answers = mastery_questions_answered.get("proficient", 0)
+            expert_correct_answers = mastery_questions_answered.get("expert", 0)
+            master_correct_answers = mastery_questions_answered.get("master", 0)
         else:
             # For root topics (parent_id is None), unlock them by default
             if topic.parent_id is None:
@@ -94,10 +105,17 @@ async def get_user_progress(user_id: int, db: AsyncSession = Depends(get_db)):
             "current_mastery_level": current_mastery_level,
             "questions_answered": questions_answered,
             "correct_answers": correct_answers,
+            "correct_answers_at_current_level": correct_answers_at_current_level if progress else 0,
             "skill_level": skill_level,
             "confidence": confidence,
             "unlocked_at": unlocked_at,
-            "mastery_questions_answered": mastery_questions_answered
+            "mastery_questions_answered": mastery_questions_answered,
+            "mastery_correct_answers": mastery_questions_answered,  # Add alias for frontend compatibility
+            "novice_correct_answers": novice_correct_answers if progress else 0,
+            "competent_correct_answers": competent_correct_answers if progress else 0,
+            "proficient_correct_answers": proficient_correct_answers if progress else 0,
+            "expert_correct_answers": expert_correct_answers if progress else 0,
+            "master_correct_answers": master_correct_answers if progress else 0
         })
     
     # Calculate overall mastery progress (average mastery level across unlocked topics)
@@ -242,6 +260,12 @@ async def get_topic_progress_details(topic_id: int, user_id: int = 1, db: AsyncS
     
     recent_questions = recent_questions_result.scalars().all()
     
+    # Get detailed mastery information
+    mastery_service = MasteryProgressService()
+    mastery_info = None
+    if progress:
+        mastery_info = await mastery_service.get_user_mastery(db, user_id, topic_id)
+    
     # Get child topics
     children_result = await db.execute(
         select(Topic, UserSkillProgress)
@@ -279,14 +303,17 @@ async def get_topic_progress_details(topic_id: int, user_id: int = 1, db: AsyncS
             "accuracy": (progress.correct_answers / progress.questions_answered 
                         if progress and progress.questions_answered > 0 else 0),
             "mastery_level": progress.mastery_level if progress else "not_started",
+            "current_mastery_level": progress.current_mastery_level if progress else "novice",
             "skill_level": progress.skill_level if progress else 0,
-            "confidence": progress.confidence if progress else 0
+            "confidence": progress.confidence if progress else 0,
+            "mastery_questions_answered": progress.mastery_questions_answered if progress else {"novice": 0, "competent": 0, "proficient": 0, "expert": 0, "master": 0},
+            "mastery_info": mastery_info
         },
         "recent_activity": [
             {
-                "answered_at": q.answered_at.isoformat(),
+                "answered_at": q.answered_at.isoformat() if q.answered_at else None,
                 "is_correct": q.is_correct,
-                "time_taken": q.time_taken
+                "time_taken": q.time_spent
             } for q in recent_questions
         ],
         "children": children

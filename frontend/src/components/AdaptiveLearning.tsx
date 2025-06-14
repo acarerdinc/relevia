@@ -433,7 +433,7 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
                       Mastery Progress
                     </span>
                     <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
-                      {feedback.mastery_advancement.questions_at_level} question{feedback.mastery_advancement.questions_at_level !== 1 ? 's' : ''} answered at {feedback.mastery_advancement.current_level} level
+                      {feedback.mastery_advancement.correct_answers_at_level || feedback.mastery_advancement.questions_at_level} correct answer{(feedback.mastery_advancement.correct_answers_at_level || feedback.mastery_advancement.questions_at_level) !== 1 ? 's' : ''} at {feedback.mastery_advancement.current_level} level
                     </p>
                     {!feedback.mastery_advancement.advanced && feedback.mastery_advancement.questions_needed > 0 && (
                       <p className="text-xs text-purple-600 dark:text-purple-400">
@@ -656,7 +656,7 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
                   ></div>
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {currentQuestion.topic_progress.proficiency.questions_answered || 0} questions answered at {currentQuestion.topic_progress.proficiency.mastery_level || 'novice'} level
+                  {currentQuestion.topic_progress.proficiency.correct_answers_at_level || currentQuestion.topic_progress.proficiency.questions_answered || 0} correct answers at {currentQuestion.topic_progress.proficiency.mastery_level || 'novice'} level
                 </div>
               </div>
 
@@ -697,7 +697,7 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
                       Mastery Progress
                     </span>
                     <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
-                      {feedback.mastery_advancement.questions_at_level} question{feedback.mastery_advancement.questions_at_level !== 1 ? 's' : ''} answered at {feedback.mastery_advancement.current_level} level
+                      {feedback.mastery_advancement.correct_answers_at_level || feedback.mastery_advancement.questions_at_level} correct answer{(feedback.mastery_advancement.correct_answers_at_level || feedback.mastery_advancement.questions_at_level) !== 1 ? 's' : ''} at {feedback.mastery_advancement.current_level} level
                     </p>
                     {!feedback.mastery_advancement.advanced && feedback.mastery_advancement.questions_needed && (
                       <p className="text-xs text-purple-600 dark:text-purple-400">

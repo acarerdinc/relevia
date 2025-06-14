@@ -1,0 +1,213 @@
+{
+  "summary": {
+    "total_tests": 20,
+    "successful": 0,
+    "failed": 20,
+    "mean_delay": null,
+    "median_delay": null,
+    "min_delay": null,
+    "max_delay": null
+  },
+  "detailed_results": [
+    {
+      "test_num": 1,
+      "topic": "Machine Learning",
+      "difficulty": 1,
+      "mastery_level": "novice",
+      "delay": 9.202957153320312e-05,
+      "success": false,
+      "error": "GeminiService.generate_question() got an unexpected keyword argument 'mastery_level'",
+      "timestamp": "2025-06-14T08:48:57.570528"
+    },
+    {
+      "test_num": 2,
+      "topic": "Neural Networks",
+      "difficulty": 3,
+      "mastery_level": "competent",
+      "delay": 0.0004229545593261719,
+      "success": false,
+      "error": "GeminiService.generate_question() got an unexpected keyword argument 'mastery_level'",
+      "timestamp": "2025-06-14T08:48:58.072221"
+    },
+    {
+      "test_num": 3,
+      "topic": "Computer Vision",
+      "difficulty": 5,
+      "mastery_level": "proficient",
+      "delay": 0.0003750324249267578,
+      "success": false,
+      "error": "GeminiService.generate_question() got an unexpected keyword argument 'mastery_level'",
+      "timestamp": "2025-06-14T08:48:58.573898"
+    },
+    {
+      "test_num": 4,
+      "topic": "Natural Language Processing",
+      "difficulty": 7,
+      "mastery_level": "expert",
+      "delay": 0.00048613548278808594,
+      "success": false,
+      "error": "GeminiService.generate_question() got an unexpected keyword argument 'mastery_level'",
+      "timestamp": "2025-06-14T08:48:59.074881"
+    },
+    {
+      "test_num": 5,
+      "topic": "Reinforcement Learning",
+      "difficulty": 9,
+      "mastery_level": "master",
+      "delay": 0.00037670135498046875,
+      "success": false,
+      "error": "GeminiService.generate_question() got an unexpected keyword argument 'mastery_level'",
+      "timestamp": "2025-06-14T08:48:59.576535"
+    },
+    {
+      "test_num": 6,
+      "topic": "Machine Learning",
+      "difficulty": 1,
+      "mastery_level": "novice",
+      "delay": 0.00045490264892578125,
+      "success": false,
+      "error": "GeminiService.generate_question() got an unexpected keyword argument 'mastery_level'",
+      "timestamp": "2025-06-14T08:49:00.078130"
+    },
+    {
+      "test_num": 7,
+      "topic": "Neural Networks",
+      "difficulty": 3,
+      "mastery_level": "competent",
+      "delay": 0.00039505958557128906,
+      "success": false,
+      "error": "GeminiService.generate_question() got an unexpected keyword argument 'mastery_level'",
+      "timestamp": "2025-06-14T08:49:00.579840"
+    },
+    {
+      "test_num": 8,
+      "topic": "Computer Vision",
+      "difficulty": 5,
+      "mastery_level": "proficient",
+      "delay": 0.0003719329833984375,
+      "success": false,
+      "error": "GeminiService.generate_question() got an unexpected keyword argument 'mastery_level'",
+      "timestamp": "2025-06-14T08:49:01.081496"
+    },
+    {
+      "test_num": 9,
+      "topic": "Natural Language Processing",
+      "difficulty": 7,
+      "mastery_level": "expert",
+      "delay": 0.0003941059112548828,
+      "success": false,
+      "error": "GeminiService.generate_question() got an unexpected keyword argument 'mastery_level'",
+      "timestamp": "2025-06-14T08:49:01.583234"
+    },
+    {
+      "test_num": 10,
+      "topic": "Reinforcement Learning",
+      "difficulty": 9,
+      "mastery_level": "master",
+      "delay": 0.00038504600524902344,
+      "success": false,
+      "error": "GeminiService.generate_question() got an unexpected keyword argument 'mastery_level'",
+      "timestamp": "2025-06-14T08:49:02.084924"
+    },
+    {
+      "test_num": 11,
+      "topic": "Machine Learning",
+      "difficulty": 1,
+      "mastery_level": "novice",
+      "delay": 0.00037932395935058594,
+      "success": false,
+      "error": "GeminiService.generate_question() got an unexpected keyword argument 'mastery_level'",
+      "timestamp": "2025-06-14T08:49:02.586590"
+    },
+    {
+      "test_num": 12,
+      "topic": "Neural Networks",
+      "difficulty": 3,
+      "mastery_level": "competent",
+      "delay": 0.00039505958557128906,
+      "success": false,
+      "error": "GeminiService.generate_question() got an unexpected keyword argument 'mastery_level'",
+      "timestamp": "2025-06-14T08:49:03.088281"
+    },
+    {
+      "test_num": 13,
+      "topic": "Computer Vision",
+      "difficulty": 5,
+      "mastery_level": "proficient",
+      "delay": 0.00036907196044921875,
+      "success": false,
+      "error": "GeminiService.generate_question() got an unexpected keyword argument 'mastery_level'",
+      "timestamp": "2025-06-14T08:49:03.589941"
+    },
+    {
+      "test_num": 14,
+      "topic": "Natural Language Processing",
+      "difficulty": 7,
+      "mastery_level": "expert",
+      "delay": 0.000392913818359375,
+      "success": false,
+      "error": "GeminiService.generate_question() got an unexpected keyword argument 'mastery_level'",
+      "timestamp": "2025-06-14T08:49:04.091630"
+    },
+    {
+      "test_num": 15,
+      "topic": "Reinforcement Learning",
+      "difficulty": 9,
+      "mastery_level": "master",
+      "delay": 0.00038313865661621094,
+      "success": false,
+      "error": "GeminiService.generate_question() got an unexpected keyword argument 'mastery_level'",
+      "timestamp": "2025-06-14T08:49:04.593297"
+    },
+    {
+      "test_num": 16,
+      "topic": "Machine Learning",
+      "difficulty": 1,
+      "mastery_level": "novice",
+      "delay": 0.0003750324249267578,
+      "success": false,
+      "error": "GeminiService.generate_question() got an unexpected keyword argument 'mastery_level'",
+      "timestamp": "2025-06-14T08:49:05.094969"
+    },
+    {
+      "test_num": 17,
+      "topic": "Neural Networks",
+      "difficulty": 3,
+      "mastery_level": "competent",
+      "delay": 0.0003859996795654297,
+      "success": false,
+      "error": "GeminiService.generate_question() got an unexpected keyword argument 'mastery_level'",
+      "timestamp": "2025-06-14T08:49:05.596653"
+    },
+    {
+      "test_num": 18,
+      "topic": "Computer Vision",
+      "difficulty": 5,
+      "mastery_level": "proficient",
+      "delay": 0.00037407875061035156,
+      "success": false,
+      "error": "GeminiService.generate_question() got an unexpected keyword argument 'mastery_level'",
+      "timestamp": "2025-06-14T08:49:06.098325"
+    },
+    {
+      "test_num": 19,
+      "topic": "Natural Language Processing",
+      "difficulty": 7,
+      "mastery_level": "expert",
+      "delay": 0.0003447532653808594,
+      "success": false,
+      "error": "GeminiService.generate_question() got an unexpected keyword argument 'mastery_level'",
+      "timestamp": "2025-06-14T08:49:06.599994"
+    },
+    {
+      "test_num": 20,
+      "topic": "Reinforcement Learning",
+      "difficulty": 9,
+      "mastery_level": "master",
+      "delay": 0.00038623809814453125,
+      "success": false,
+      "error": "GeminiService.generate_question() got an unexpected keyword argument 'mastery_level'",
+      "timestamp": "2025-06-14T08:49:07.101723"
+    }
+  ]
+}

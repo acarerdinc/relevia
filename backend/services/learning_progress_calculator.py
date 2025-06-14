@@ -122,6 +122,7 @@ class LearningProgressCalculator:
                 "proficiency": {
                     "mastery_level": "novice",
                     "questions_answered": 0,
+                    "correct_answers_at_level": 0,
                     "progress_to_next": 0.0,
                     "can_unlock_subtopics": False
                 }
@@ -134,7 +135,7 @@ class LearningProgressCalculator:
         
         questions_answered = progress.questions_answered or 0
         mastery_level = mastery_data["current_level"]
-        questions_at_current_level = mastery_data["questions_answered_at_level"]
+        correct_answers_at_current_level = mastery_data["correct_answers_at_level"]
         progress_percent = mastery_data["progress_to_next"]["progress_percent"]
         
         # Check if user can unlock subtopics (Competent level or above)
@@ -148,7 +149,7 @@ class LearningProgressCalculator:
             "questions_answered": questions_answered,
             "proficiency": {
                 "mastery_level": mastery_level,
-                "questions_answered": questions_at_current_level,
+                "correct_answers_at_level": correct_answers_at_current_level,
                 "progress_to_next": progress_percent,
                 "can_unlock_subtopics": can_unlock_subtopics
             }

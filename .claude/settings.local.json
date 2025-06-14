@@ -44,7 +44,9 @@
       "Bash(touch:*)",
       "Bash(sqlite3:*)",
       "Bash(psql:*)",
-      "Bash(sed:*)"
+      "Bash(sed:*)",
+      "Bash(./scripts/restart_server.sh:*)",
+      "Bash(./reset_db.sh:*)"
     ],
     "deny": []
   }

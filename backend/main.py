@@ -5,7 +5,7 @@ import uvicorn
 import time
 import os
 
-from api.routes import health, quiz, topics, auth, progress, personalization, topic_requests, mastery, debug
+from api.routes import health, quiz, topics, auth, progress, personalization, topic_requests, mastery, debug, init_db
 from api.v1 import adaptive_learning
 from core.config import settings
 from core.logging_config import logger, performance_logger
@@ -104,6 +104,7 @@ app.include_router(progress.router, prefix="/api/v1/progress", tags=["progress"]
 app.include_router(personalization.router, prefix="/api/v1/personalization", tags=["personalization"])
 app.include_router(mastery.router, prefix="/api/v1", tags=["mastery"])
 app.include_router(adaptive_learning.router, prefix="/api/v1", tags=["adaptive_learning"])
+app.include_router(init_db.router, prefix="/api/v1/setup", tags=["setup"])
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

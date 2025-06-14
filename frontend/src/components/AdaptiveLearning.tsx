@@ -92,7 +92,8 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
 
   const loadDashboard = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/v1/adaptive/dashboard/1');
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+      const response = await fetch(`${API_URL}/adaptive/dashboard/1`);
       const data = await response.json();
       
       // Ensure data has the expected structure
@@ -193,9 +194,10 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
   const getNextQuestion = async (sessionId: number, isFocusedSession: boolean = false) => {
     try {
       // Use focused quiz endpoint if this is a session started from ProgressDashboard
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
       const endpoint = isFocusedSession 
-        ? `http://localhost:8000/api/v1/quiz/question/${sessionId}`
-        : `http://localhost:8000/api/v1/adaptive/question/${sessionId}`;
+        ? `${API_URL}/quiz/question/${sessionId}`
+        : `${API_URL}/adaptive/question/${sessionId}`;
       
       const response = await fetch(endpoint);
       
@@ -234,11 +236,12 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
       const isFocused = currentQuestion.selection_strategy === 'focused';
       const isAdaptive = currentQuestion.selection_strategy !== 'traditional' && !isFocused;
       
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
       const endpoint = isFocused 
-        ? 'http://localhost:8000/api/v1/quiz/answer'
+        ? `${API_URL}/quiz/answer`
         : isAdaptive 
-          ? 'http://localhost:8000/api/v1/adaptive/answer'
-          : 'http://localhost:8000/api/v1/quiz/answer';
+          ? `${API_URL}/adaptive/answer`
+          : `${API_URL}/quiz/answer`;
       
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -298,7 +301,8 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
         console.log('🚀 Starting learning for topic:', topicCreationResult.topic_id);
         
         // Use the regular quiz API for specific topics
-        const response = await fetch('http://localhost:8000/api/v1/quiz/start', {
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+        const response = await fetch(`${API_URL}/quiz/start`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -318,7 +322,7 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
         setSessionId(session.session_id);
         
         // Get first question using the regular quiz endpoint
-        const questionResponse = await fetch(`http://localhost:8000/api/v1/quiz/question/${session.session_id}`);
+        const questionResponse = await fetch(`${API_URL}/quiz/question/${session.session_id}`);
         
         if (!questionResponse.ok) {
           const questionErrorText = await questionResponse.text();

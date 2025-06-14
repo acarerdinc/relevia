@@ -7,6 +7,7 @@ is_vercel = os.environ.get("VERCEL", "0") == "1"
 
 # Get database URL from environment
 postgres_url = os.environ.get("POSTGRES_URL")
+print(f"[CONFIG] Raw POSTGRES_URL: {postgres_url[:50] if postgres_url else 'None'}...")
 
 # Convert postgresql:// to postgresql+asyncpg:// for async support
 if postgres_url:

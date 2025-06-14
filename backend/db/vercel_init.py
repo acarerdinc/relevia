@@ -24,6 +24,8 @@ async def ensure_database_initialized():
     try:
         # Get database URL from environment
         database_url = os.environ.get("POSTGRES_URL")
+        logger.info(f"Raw POSTGRES_URL from env: {database_url[:50] if database_url else 'None'}...")
+        
         if not database_url:
             # Fallback to SQLite in /tmp for Vercel
             if os.environ.get("VERCEL") == "1":

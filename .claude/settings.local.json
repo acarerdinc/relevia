@@ -47,7 +47,9 @@
       "Bash(cp:*)",
       "Bash(tail:*)",
       "Bash(jq:*)",
-      "Bash(cut:*)"
+      "Bash(cut:*)",
+      "Bash(head:*)",
+      "Bash(awk:*)"
     ],
     "deny": []
   }

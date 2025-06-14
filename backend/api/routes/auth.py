@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
@@ -100,11 +100,47 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     from core.logging_config import logger
     logger.info(f"Login attempt for: {form_data.username}")
     
-    result = await db.execute(select(User).where(User.email == form_data.username))
-    user = result.scalar_one_or_none()
+    try:
+        # Use raw SQL to avoid prepared statement issues
+        query = text("""
+            SELECT id, username, email, hashed_password 
+            FROM users 
+            WHERE email = :email
+            LIMIT 1
+        """)
+        result = await db.execute(query, {"email": form_data.username})
+        row = result.first()
+        
+        if row:
+            user = User(
+                id=row.id,
+                username=row.username,
+                email=row.email,
+                hashed_password=row.hashed_password
+            )
+        else:
+            user = None
+    except Exception as e:
+        logger.error(f"Database error during login for {form_data.username}: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        # Return generic error to avoid exposing database issues
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     
-    if not user or not verify_password(form_data.password, user.hashed_password):
-        logger.warning(f"Failed login attempt for: {form_data.username}")
+    if not user:
+        logger.warning(f"User not found: {form_data.username}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    if not verify_password(form_data.password, user.hashed_password):
+        logger.warning(f"Invalid password for: {form_data.username}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",

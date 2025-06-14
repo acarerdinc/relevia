@@ -9,7 +9,7 @@ from api.routes import health, quiz, topics, auth, progress, personalization, to
 from api.v1 import adaptive_learning
 from core.config import settings
 from core.logging_config import logger, performance_logger
-from db.database import engine, Base
+from db.database import engine, Base, is_turso
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -20,22 +20,28 @@ async def lifespan(app: FastAPI):
     if os.environ.get("VERCEL") == "1":
         # Skip initialization - database is already set up
         logger.info("Running on Vercel - skipping database initialization")
+        if is_turso:
+            logger.info("Using Turso database")
         # from db.vercel_init import ensure_database_initialized
         # await ensure_database_initialized()
     else:
-        # Standard initialization for local development
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        logger.info("✅ Database tables created/verified")
-        
-        # Initialize database with users and topics
-        from db.init_db import init_database
-        await init_database()
+        if not is_turso and engine is not None:
+            # Standard initialization for local development with async engine
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            logger.info("✅ Database tables created/verified")
+            
+            # Initialize database with users and topics
+            from db.init_db import init_database
+            await init_database()
+        elif is_turso:
+            logger.info("Using Turso database - tables should already exist")
     
     yield
     # Shutdown
     logger.info("🛑 Shutting down Relevia backend server")
-    await engine.dispose()
+    if engine is not None:
+        await engine.dispose()
 
 app = FastAPI(
     title="Relevia API",

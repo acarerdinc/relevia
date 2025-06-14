@@ -487,18 +487,19 @@ class AdaptiveQuestionSelector:
         # Ensure options is a valid list
         options = selected_question.options if selected_question.options else []
         
-        # DEBUG MODE: Skip shuffling and just mark correct answer
-        debug_mode = False  # Disabled for production - enable only for testing
+        # DEBUG MODE: Skip shuffling and provide correct answer index for frontend highlighting
+        debug_mode = True  # Enabled for fast debugging
+        debug_correct_index = None
         
         if debug_mode:
-            # Don't shuffle in debug mode - just mark the correct answer
+            # Don't shuffle in debug mode - keep original order
             shuffled_options = options.copy()
             shuffled_correct = selected_question.correct_answer
             
-            # Mark correct option with a symbol
+            # Find correct option index for frontend highlighting
             for i, option in enumerate(shuffled_options):
                 if option == shuffled_correct or option.strip().lower() == shuffled_correct.strip().lower():
-                    shuffled_options[i] = "✓ " + option
+                    debug_correct_index = i
                     break
         else:
             # Normal mode: Shuffle options to prevent predictable correct answer positions
@@ -506,7 +507,7 @@ class AdaptiveQuestionSelector:
                 options, selected_question.correct_answer
             )
         
-        return {
+        result = {
             'question_id': selected_question.id,
             'question': selected_question.content,
             'options': shuffled_options,
@@ -518,6 +519,12 @@ class AdaptiveQuestionSelector:
             'topic_ucb_score': topic.get('ucb_score', 0),
             'topic_interest_score': topic.get('interest_score', 0.5)
         }
+        
+        # Add debug info if in debug mode
+        if debug_mode and debug_correct_index is not None:
+            result["debug_correct_index"] = debug_correct_index
+            
+        return result
     
     async def _update_topic_selection_stats(
         self, 
@@ -983,18 +990,19 @@ Make sure the explanation:
             print(f"✅ Successfully created new question {new_question.id} for topic {topic['name']}")
             print(f"📝 Question concepts: {', '.join(proposed_concepts)}")
             
-            # DEBUG MODE: Skip shuffling and just mark correct answer
-            debug_mode = False  # Disabled for production - enable only for testing
+            # DEBUG MODE: Skip shuffling and provide correct answer index for frontend highlighting
+            debug_mode = True  # Enabled for fast debugging
+            debug_correct_index = None
             
             if debug_mode:
-                # Don't shuffle in debug mode - just mark the correct answer
+                # Don't shuffle in debug mode - keep original order
                 shuffled_options = new_question.options.copy()
                 shuffled_correct = new_question.correct_answer
                 
-                # Mark correct option with a symbol
+                # Find correct option index for frontend highlighting
                 for i, option in enumerate(shuffled_options):
                     if option == shuffled_correct or option.strip().lower() == shuffled_correct.strip().lower():
-                        shuffled_options[i] = "✓ " + option
+                        debug_correct_index = i
                         break
             else:
                 # Normal mode: Shuffle options to prevent predictable correct answer positions
@@ -1003,7 +1011,7 @@ Make sure the explanation:
                 )
             
             # Return the question data in the expected format
-            return {
+            result = {
                 'question_id': new_question.id,
                 'question': new_question.content,
                 'options': shuffled_options,
@@ -1018,6 +1026,12 @@ Make sure the explanation:
                 'diversity_score': diversity_check['diversity_score'],
                 'extracted_concepts': proposed_concepts
             }
+            
+            # Add debug info if in debug mode
+            if debug_mode and debug_correct_index is not None:
+                result["debug_correct_index"] = debug_correct_index
+                
+            return result
             
         except Exception as e:
             print(f"Error generating question for topic {topic['name']}: {str(e)}")
@@ -1064,18 +1078,19 @@ Make sure the explanation:
         
         print(f"🔧 Created fallback question for {topic_name} (difficulty {difficulty})")
         
-        # DEBUG MODE: Skip shuffling and just mark correct answer
-        debug_mode = False  # Disabled for production - enable only for testing
+        # DEBUG MODE: Skip shuffling and provide correct answer index for frontend highlighting
+        debug_mode = True  # Enabled for fast debugging
+        debug_correct_index = None
         
         if debug_mode:
-            # Don't shuffle in debug mode - just mark the correct answer
+            # Don't shuffle in debug mode - keep original order
             shuffled_options = options.copy()
             shuffled_correct = correct_answer
             
-            # Mark correct option with a symbol
+            # Find correct option index for frontend highlighting
             for i, option in enumerate(shuffled_options):
                 if option == shuffled_correct or option.strip().lower() == shuffled_correct.strip().lower():
-                    shuffled_options[i] = "✓ " + option
+                    debug_correct_index = i
                     break
         else:
             # Normal mode: Shuffle options to prevent predictable correct answer positions
@@ -1083,7 +1098,7 @@ Make sure the explanation:
         
         # Return the question data without trying to save to DB
         # The calling function will handle database operations
-        return {
+        result = {
             'question': question_text,
             'options': shuffled_options,
             'difficulty': difficulty,
@@ -1097,6 +1112,12 @@ Make sure the explanation:
             'correct_answer': shuffled_correct,
             'explanation': explanation
         }
+        
+        # Add debug info if in debug mode
+        if debug_mode and debug_correct_index is not None:
+            result["debug_correct_index"] = debug_correct_index
+            
+        return result
     
     def _shuffle_question_options(self, options: List[str], correct_answer: str) -> tuple[List[str], str]:
         """Shuffle question options and return new correct answer"""

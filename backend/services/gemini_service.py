@@ -159,21 +159,24 @@ Return ONLY the JSON object, no additional text."""
         """Shuffle the options randomly and update the correct_answer accordingly"""
         import random
         
-        # DEBUG MODE: Skip shuffling and just mark correct answer
-        debug_mode = False  # Disabled for production - enable only for testing
+        # DEBUG MODE: Skip shuffling and provide correct answer index for frontend highlighting
+        debug_mode = True  # Enabled for fast debugging
         
         if debug_mode:
-            # Don't shuffle in debug mode - just mark the correct answer
+            # Don't shuffle in debug mode - keep original order
             options = question_data['options'].copy()
             correct_answer = question_data['correct_answer']
             
-            # Mark correct option with a symbol
+            # Find correct option index for frontend highlighting
+            debug_correct_index = None
             for i, option in enumerate(options):
                 if option == correct_answer or option.strip().lower() == correct_answer.strip().lower():
-                    options[i] = "✓ " + option
+                    debug_correct_index = i
                     break
             
             question_data['options'] = options
+            if debug_correct_index is not None:
+                question_data['debug_correct_index'] = debug_correct_index
             return question_data
         
         # NORMAL MODE: Shuffle options

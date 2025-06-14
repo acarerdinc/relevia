@@ -204,26 +204,27 @@ class AdaptiveQuizEngine:
         topic_correct = user_progress.correct_answers if user_progress else 0
         topic_accuracy = (topic_correct / topic_questions) if topic_questions > 0 else 0
         
-        # DEBUG MODE: Skip shuffling and just mark correct answer
-        debug_mode = False  # Disabled for production - enable only for testing
+        # DEBUG MODE: Skip shuffling and provide correct answer index for frontend highlighting
+        debug_mode = True  # Enabled for fast debugging
+        debug_correct_index = None
         
         if debug_mode:
-            # Don't shuffle in debug mode - just mark the correct answer
+            # Don't shuffle in debug mode - keep original order
             shuffled_options = question.options.copy()
             shuffled_correct = question.correct_answer
             
-            # Mark correct option with a symbol
+            # Find correct option index for frontend highlighting
             for i, option in enumerate(shuffled_options):
                 # Check for exact match first
                 if option == shuffled_correct or option.strip().lower() == shuffled_correct.strip().lower():
-                    shuffled_options[i] = "✓ " + option
+                    debug_correct_index = i
                     break
                 # Check for letter-based match (e.g., correct_answer="C" matches "C) text...")
                 elif (len(shuffled_correct.strip()) == 1 and 
                       shuffled_correct.strip().upper() in 'ABCD' and
                       option.strip() and 
                       option.strip()[0].upper() == shuffled_correct.strip().upper()):
-                    shuffled_options[i] = "✓ " + option
+                    debug_correct_index = i
                     break
         else:
             # Normal mode: Shuffle options to prevent predictable correct answer positions
@@ -232,7 +233,7 @@ class AdaptiveQuizEngine:
             )
         
         # Return question in the same format as adaptive API
-        return {
+        result = {
             "question_id": question.id,
             "quiz_question_id": quiz_question.id,
             "question": question.content,
@@ -251,6 +252,12 @@ class AdaptiveQuizEngine:
                 db, session.user_id, topic.id
             )
         }
+        
+        # Add debug info if in debug mode
+        if debug_mode and debug_correct_index is not None:
+            result["debug_correct_index"] = debug_correct_index
+            
+        return result
     
     async def submit_answer(
         self, 
@@ -375,24 +382,24 @@ class AdaptiveQuizEngine:
             db, session.user_id, question.topic_id, action, time_spent
         )
         
-        # Check for topic unlocks after interest/proficiency update (non-blocking)
+        # Check for topic unlocks after interest/proficiency update (true background task)
         unlocked_topics = []
         if action == "answer" and is_correct is not None:
-            # Run topic unlocking in background to avoid blocking quiz flow
-            try:
-                unlocked_topics = await asyncio.wait_for(
-                    dynamic_ontology_service.check_and_unlock_subtopics(
-                        db, session.user_id, question.topic_id
-                    ),
-                    timeout=2.0  # 2 second timeout to prevent hanging
-                )
-            except asyncio.TimeoutError:
-                print(f"⚠️ Topic unlock timed out for user {session.user_id}, topic {question.topic_id}")
-                # Continue without blocking - topics will be generated later
-                unlocked_topics = []
-            except Exception as e:
-                print(f"⚠️ Topic unlock failed for user {session.user_id}: {e}")
-                unlocked_topics = []
+            # Run topic unlocking as true background task - don't wait for it
+            async def background_subtopic_generation():
+                try:
+                    # Create new database session for background task
+                    from db.database import AsyncSessionLocal
+                    async with AsyncSessionLocal() as bg_db:
+                        await dynamic_ontology_service.check_and_unlock_subtopics(
+                            bg_db, session.user_id, question.topic_id
+                        )
+                        print(f"✅ Background subtopic generation completed for user {session.user_id}, topic {question.topic_id}")
+                except Exception as e:
+                    print(f"⚠️ Background topic unlock failed for user {session.user_id}: {e}")
+            
+            # Start background task without waiting
+            asyncio.create_task(background_subtopic_generation())
         
         await db.commit()
         

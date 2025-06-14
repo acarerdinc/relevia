@@ -23,6 +23,7 @@ interface Question {
   options: string[];
   difficulty: number;
   topic: string;
+  debug_correct_index?: number; // Debug mode: index of correct answer for highlighting
 }
 
 interface AnswerResponse {

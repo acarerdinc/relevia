@@ -208,28 +208,38 @@ export function QuizInterface({ topic, onQuizComplete, onBack }: QuizInterfacePr
 
           {/* Answer Options */}
           <div className="space-y-3 mb-6">
-            {currentQuestion.options.map((option, index) => (
-              <button
-                key={index}
-                onClick={() => !showFeedback && setSelectedAnswer(option)}
-                disabled={showFeedback}
-                className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
-                  showFeedback
-                    ? option === feedback?.correct_answer
-                      ? 'border-green-500 bg-green-50 text-green-800'
-                      : option === selectedAnswer && option !== feedback?.correct_answer
-                      ? 'border-red-500 bg-red-50 text-red-800'
-                      : 'border-gray-200 bg-gray-50 text-gray-600'
-                    : selectedAnswer === option
-                    ? 'border-blue-500 bg-blue-50 text-blue-800'
-                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                }`}
+            {currentQuestion.options.map((option, index) => {
+              // Debug mode highlighting
+              const isDebugCorrect = currentQuestion.debug_correct_index === index;
+              
+              return (
+                <button
+                  key={index}
+                  onClick={() => !showFeedback && setSelectedAnswer(option)}
+                  disabled={showFeedback}
+                  className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
+                    showFeedback
+                      ? option === feedback?.correct_answer
+                        ? 'border-green-500 bg-green-50 text-green-800'
+                        : option === selectedAnswer && option !== feedback?.correct_answer
+                        ? 'border-red-500 bg-red-50 text-red-800'
+                        : 'border-gray-200 bg-gray-50 text-gray-600'
+                      : selectedAnswer === option
+                      ? 'border-blue-500 bg-blue-50 text-blue-800'
+                      : isDebugCorrect && !showFeedback
+                      ? 'border-emerald-400 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-200'
+                      : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                  }`}
               >
                 <div className="flex items-center">
                   <span className="w-8 h-8 rounded-full border-2 border-current flex items-center justify-center text-sm font-medium mr-3">
                     {String.fromCharCode(65 + index)}
                   </span>
                   {option}
+                  {/* Debug mode indicator */}
+                  {isDebugCorrect && !showFeedback && (
+                    <span className="ml-auto text-emerald-600 font-bold">🎯</span>
+                  )}
                   {showFeedback && option === feedback?.correct_answer && (
                     <span className="ml-auto text-green-600">✓</span>
                   )}
@@ -238,7 +248,8 @@ export function QuizInterface({ topic, onQuizComplete, onBack }: QuizInterfacePr
                   )}
                 </div>
               </button>
-            ))}
+              );
+            })}
           </div>
 
           {/* Feedback */}

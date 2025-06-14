@@ -150,9 +150,21 @@ class AdaptiveQuizService:
         new_interests = []
         
         if action == "answer" and is_correct is not None:
-            unlocked_topics = await dynamic_ontology_service.check_and_unlock_subtopics(
-                db, session.user_id, topic.id
-            )
+            # Run topic unlocking as background task to avoid blocking response
+            async def background_subtopic_generation():
+                try:
+                    # Create new database session for background task
+                    from db.database import AsyncSessionLocal
+                    async with AsyncSessionLocal() as bg_db:
+                        await dynamic_ontology_service.check_and_unlock_subtopics(
+                            bg_db, session.user_id, topic.id
+                        )
+                        logger.info(f"✅ Background subtopic generation completed for user {session.user_id}, topic {topic.id}")
+                except Exception as e:
+                    logger.error(f"⚠️ Background topic unlock failed for user {session.user_id}: {e}")
+            
+            # Start background task without waiting
+            asyncio.create_task(background_subtopic_generation())
         
         if interest_update and interest_update.get("new_interests_discovered"):
             new_interests = interest_update["new_interests_discovered"]
@@ -194,29 +206,28 @@ class AdaptiveQuizService:
     
     async def get_learning_dashboard(self, db: AsyncSession, user_id: int) -> Dict:
         """Get comprehensive learning dashboard in frontend-expected format"""
-        # Simplified data gathering to avoid async issues
-        # Get basic progress data 
-        progress_result = await db.execute(
-            select(UserSkillProgress, Topic)
-            .join(Topic, Topic.id == UserSkillProgress.topic_id)
-            .where(UserSkillProgress.user_id == user_id)
-            .order_by(UserSkillProgress.skill_level.desc())
-        )
-        progress_data = progress_result.fetchall()
-        
-        # Create simplified comprehensive data structure
-        total_topics = len(progress_data)
-        comprehensive_data = {
-            'progress_summary': {'total_topics': total_topics},
-            'learning_activity': {'last_7_days': {'accuracy': 0.8}},
-            'interests': {'top_interests': [], 'emerging_interests': []},
-            'recent_unlocks': [],
-            'recommendations': [{'suggestion': 'Continue learning'}],
-            'adaptive_insights': {'adaptive_sessions_completed': 0}
-        }
-        
-        # Transform to the format expected by the frontend
         try:
+            # Simplified data gathering to avoid async issues
+            # Get basic progress data 
+            progress_result = await db.execute(
+                select(UserSkillProgress, Topic)
+                .join(Topic, Topic.id == UserSkillProgress.topic_id)
+                .where(UserSkillProgress.user_id == user_id)
+                .order_by(UserSkillProgress.skill_level.desc())
+            )
+            progress_data = progress_result.fetchall()
+            
+            # Create simplified comprehensive data structure
+            total_topics = len(progress_data)
+            comprehensive_data = {
+                'progress_summary': {'total_topics': total_topics},
+                'learning_activity': {'last_7_days': {'accuracy': 0.8}},
+                'interests': {'top_interests': [], 'emerging_interests': []},
+                'recent_unlocks': [],
+                'recommendations': [{'suggestion': 'Continue learning'}],
+                'adaptive_insights': {'adaptive_sessions_completed': 0}
+            }
+            
             # Extract data from comprehensive dashboard
             progress = comprehensive_data.get('progress_summary', {})
             activity = comprehensive_data.get('learning_activity', {})
@@ -258,7 +269,7 @@ class AdaptiveQuizService:
                 }
             }
         except Exception as e:
-            logger.error(f"Error transforming dashboard data: {e}")
+            logger.error(f"Error in dashboard generation: {e}")
             # Return a safe default structure
             return {
                 "learning_state": {

@@ -505,17 +505,34 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
                   // Clean option text by removing any existing letter prefixes (A., B., etc.) and parentheses
                   const cleanOption = option.replace(/^[A-Z]\.?\s*[A-Z]\)\s*/, '').replace(/^[A-Z]\.\s*/, '').replace(/^[A-Z]\)\s*/, '');
                   
+                  // Debug mode highlighting
+                  const isDebugCorrect = currentQuestion.debug_correct_index === index;
+                  
                   return (
                     <button
                       key={index}
                       onClick={() => submitAnswer(index.toString(), 'answer')}
                       disabled={isLoading}
-                      className="w-full text-left p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 dark:hover:border-blue-600 transition-colors disabled:opacity-50"
+                      className={`w-full text-left p-4 border rounded-lg transition-colors disabled:opacity-50 ${
+                        isDebugCorrect
+                          ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 ring-2 ring-emerald-200 dark:ring-emerald-800'
+                          : 'border-gray-200 dark:border-gray-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 dark:hover:border-blue-600'
+                      }`}
                     >
-                      <span className="font-medium text-blue-600 dark:text-blue-400 mr-3">
-                        {String.fromCharCode(65 + index)}.
-                      </span>
-                      {cleanOption}
+                      <div className="flex items-center">
+                        <span className={`font-medium mr-3 ${
+                          isDebugCorrect 
+                            ? 'text-emerald-600 dark:text-emerald-400' 
+                            : 'text-blue-600 dark:text-blue-400'
+                        }`}>
+                          {String.fromCharCode(65 + index)}.
+                        </span>
+                        {cleanOption}
+                        {/* Debug mode indicator */}
+                        {isDebugCorrect && (
+                          <span className="ml-auto text-emerald-600 dark:text-emerald-400 font-bold">🎯</span>
+                        )}
+                      </div>
                     </button>
                   );
                 })}

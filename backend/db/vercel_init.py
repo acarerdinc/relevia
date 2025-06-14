@@ -47,17 +47,11 @@ async def ensure_database_initialized():
                 # Remove any existing ssl/sslmode parameters
                 import re
                 database_url = re.sub(r'[?&](ssl|sslmode|pgbouncer|statement_cache_size|prepare_threshold)=[^&]*', '', database_url)
-                # Add asyncpg-compatible SSL parameter and disable prepared statements for pooler
-                if "pooler.supabase.com:6543" in database_url:
-                    if "?" in database_url:
-                        database_url += "&ssl=require&prepare_threshold=0"
-                    else:
-                        database_url += "?ssl=require&prepare_threshold=0"
+                # Add asyncpg-compatible SSL parameter
+                if "?" in database_url:
+                    database_url += "&ssl=require"
                 else:
-                    if "?" in database_url:
-                        database_url += "&ssl=require"
-                    else:
-                        database_url += "?ssl=require"
+                    database_url += "?ssl=require"
         
         # Log connection details (without password)
         if database_url and "://" in database_url:
@@ -82,10 +76,13 @@ async def ensure_database_initialized():
         if "pooler.supabase.com:6543" in database_url:
             from sqlalchemy.pool import NullPool
             engine_kwargs["poolclass"] = NullPool
-            # Disable prepared statements at the connection level
+            # Disable JIT and set timeout
             engine_kwargs["connect_args"] = {
-                "server_settings": {"jit": "off"},
-                "prepare_threshold": 0,  # Disable prepared statements
+                "server_settings": {
+                    "jit": "off",
+                    # Disable prepared statements via server setting
+                    "plan_cache_mode": "force_custom_plan"
+                },
                 "command_timeout": 60
             }
         

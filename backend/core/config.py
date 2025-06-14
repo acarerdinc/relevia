@@ -30,7 +30,13 @@ class Settings(BaseSettings):
     PINECONE_INDEX: str = "relevia-skills"
     
     # CORS
-    ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:3001", "https://relevia-7ifv31n8p-acarerdincs-projects.vercel.app", "https://relevia.vercel.app"]
+    ALLOWED_ORIGINS: List[str] = [
+        "http://localhost:3000", 
+        "http://localhost:3001", 
+        "https://relevia.vercel.app",
+        "https://relevia-frontend.vercel.app",
+        "https://relevia-backend.vercel.app"
+    ]
     
     class Config:
         env_file = ".env"

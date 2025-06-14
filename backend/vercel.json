@@ -4,5 +4,14 @@
   ],
   "env": {
     "VERCEL": "1"
+  },
+  "buildCommand": "",
+  "outputDirectory": ".",
+  "installCommand": "pip install -r requirements-deploy.txt",
+  "functions": {
+    "api/index.py": {
+      "runtime": "python3.9",
+      "maxDuration": 30
+    }
   }
 }

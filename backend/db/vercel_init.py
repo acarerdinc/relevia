@@ -46,16 +46,14 @@ async def ensure_database_initialized():
                 # asyncpg requires different SSL parameter format
                 # Remove any existing ssl/sslmode parameters
                 import re
-                database_url = re.sub(r'[?&](ssl|sslmode|pgbouncer|statement_cache_size)=[^&]*', '', database_url)
-                # Add asyncpg-compatible SSL parameter and pgbouncer flag
+                database_url = re.sub(r'[?&](ssl|sslmode|pgbouncer|statement_cache_size|prepare_threshold)=[^&]*', '', database_url)
+                # Add asyncpg-compatible SSL parameter and disable prepared statements for pooler
                 if "pooler.supabase.com:6543" in database_url:
-                    # Transaction pooler needs special handling
                     if "?" in database_url:
-                        database_url += "&ssl=require&pgbouncer=true&statement_cache_size=0"
+                        database_url += "&ssl=require&prepare_threshold=0"
                     else:
-                        database_url += "?ssl=require&pgbouncer=true&statement_cache_size=0"
+                        database_url += "?ssl=require&prepare_threshold=0"
                 else:
-                    # Direct connection
                     if "?" in database_url:
                         database_url += "&ssl=require"
                     else:
@@ -87,6 +85,7 @@ async def ensure_database_initialized():
             # Disable prepared statements at the connection level
             engine_kwargs["connect_args"] = {
                 "server_settings": {"jit": "off"},
+                "prepare_threshold": 0,  # Disable prepared statements
                 "command_timeout": 60
             }
         

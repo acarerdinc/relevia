@@ -6,26 +6,27 @@ from core.config import settings
 # Configure database URL and engine options
 database_url = settings.DATABASE_URL
 
-# For Supabase transaction pooler, add pgbouncer=true parameter to URL
+# For Supabase transaction pooler, modify the URL to work with pgbouncer
 if "pooler.supabase.com:6543" in database_url:
-    # Add pgbouncer parameter to URL to disable prepared statements
+    # Add prepare_threshold=0 to disable prepared statements
     if "?" in database_url:
-        database_url += "&pgbouncer=true&statement_cache_size=0"
+        database_url += "&prepare_threshold=0"
     else:
-        database_url += "?pgbouncer=true&statement_cache_size=0"
+        database_url += "?prepare_threshold=0"
 
 engine_kwargs = {
     "echo": False if database_url.startswith("postgresql") else True,
     "pool_pre_ping": True,  # Test connections before using them
 }
 
-# For Supabase transaction pooler, use NullPool for serverless
+# For Supabase transaction pooler, use special configuration
 if "pooler.supabase.com:6543" in database_url:
     from sqlalchemy.pool import NullPool
     engine_kwargs["poolclass"] = NullPool
     # Disable prepared statements at the connection level
     engine_kwargs["connect_args"] = {
         "server_settings": {"jit": "off"},
+        "prepare_threshold": 0,  # Disable prepared statements
         "command_timeout": 60
     }
 

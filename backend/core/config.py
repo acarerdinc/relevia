@@ -6,26 +6,24 @@ import os
 is_vercel = os.environ.get("VERCEL", "0") == "1"
 
 # Database URL configuration
-turso_url = os.environ.get("TURSO_DATABASE_URL")
-turso_token = os.environ.get("TURSO_AUTH_TOKEN")
+# Check for Supabase/PostgreSQL on Vercel
+postgres_url = os.environ.get("POSTGRES_URL")
+database_url_env = os.environ.get("DATABASE_URL")
 
-if turso_url and turso_token and is_vercel:
-    # On Vercel with Turso configured, use local SQLite as a workaround
-    # Turso's libsql driver doesn't support async operations needed by FastAPI
-    default_database_url = "sqlite+aiosqlite:////tmp/relevia.db"
-    print(f"[CONFIG] Using local SQLite on Vercel (Turso async incompatibility workaround)")
-    print(f"[CONFIG] Turso URL configured: {turso_url[:50]}...")
-elif turso_url and turso_token:
-    # Local development with Turso - use the URL as-is
-    default_database_url = f"{turso_url}?authToken={turso_token}"
-    print(f"[CONFIG] Using Turso database: {turso_url[:50]}...")
+if is_vercel and (postgres_url or database_url_env):
+    # Use PostgreSQL on Vercel
+    default_database_url = postgres_url or database_url_env
+    # Convert postgres:// to postgresql:// for SQLAlchemy
+    if default_database_url.startswith("postgres://"):
+        default_database_url = default_database_url.replace("postgres://", "postgresql://", 1)
+    # Add asyncpg driver for async operations
+    if "postgresql://" in default_database_url and "+asyncpg" not in default_database_url:
+        default_database_url = default_database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    print(f"[CONFIG] Using PostgreSQL database on Vercel")
 else:
-    # Fallback to SQLite for local development
-    if is_vercel:
-        default_database_url = "sqlite+aiosqlite:////tmp/relevia.db"
-    else:
-        default_database_url = "sqlite+aiosqlite:///./relevia.db"
-    print(f"[CONFIG] Using SQLite database: {default_database_url}")
+    # Local development - use SQLite
+    default_database_url = "sqlite+aiosqlite:///./relevia.db"
+    print(f"[CONFIG] Using SQLite database for local development")
 
 class Settings(BaseSettings):
     # Database

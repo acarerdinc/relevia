@@ -1,25 +1,32 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import NullPool
 from core.config import settings
+import os
 
 # Configure database URL and engine options
 database_url = settings.DATABASE_URL
 
-# We're using SQLite for everything now (including on Vercel)
-is_turso = False
-
 Base = declarative_base()
 
-# Use standard async engine for SQLite
-engine_kwargs = {
-    "echo": False,  # Disable SQL logging for production
-}
+# Configure engine based on database type
+is_postgresql = database_url.startswith("postgresql")
+is_vercel = os.environ.get("VERCEL", "0") == "1"
 
-# For PostgreSQL connections, use pool_pre_ping
-if database_url.startswith("postgresql"):
-    engine_kwargs["pool_pre_ping"] = True
+if is_postgresql and is_vercel:
+    # Use NullPool for Vercel + PostgreSQL (with PgBouncer)
+    from sqlalchemy.pool import NullPool
+    engine_kwargs = {
+        "echo": False,
+        "pool_pre_ping": True,
+        "poolclass": NullPool,  # Let PgBouncer handle pooling
+    }
+else:
+    # Standard configuration for local development
+    engine_kwargs = {
+        "echo": False,
+        "pool_pre_ping": True if is_postgresql else False,
+    }
 
 engine = create_async_engine(database_url, **engine_kwargs)
 

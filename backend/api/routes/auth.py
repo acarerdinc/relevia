@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from passlib.context import CryptContext
 from jose import JWTError, jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from pydantic import BaseModel, EmailStr
 
@@ -18,7 +18,7 @@ router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # OAuth2 scheme
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 # Pydantic models
 class UserRegister(BaseModel):
@@ -49,9 +49,9 @@ def get_password_hash(password):
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
@@ -63,17 +63,26 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
+        # Debug logging
+        from core.logging_config import logger
+        logger.debug(f"Validating token: {token[:20]}... with SECRET_KEY: {settings.SECRET_KEY[:10]}...")
+        
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         email: str = payload.get("sub")
         if email is None:
+            logger.error("No email found in token payload")
             raise credentials_exception
-    except JWTError:
+    except JWTError as e:
+        logger.error(f"JWT decode error: {str(e)}")
         raise credentials_exception
     
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
     if user is None:
+        logger.error(f"User not found for email: {email}")
         raise credentials_exception
+    
+    logger.debug(f"Successfully authenticated user: {user.email}")
     return user
 
 # Routes
@@ -88,10 +97,14 @@ async def register(user_data: UserRegister, db: AsyncSession = Depends(get_db)):
 @router.post("/login", response_model=Token)
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
     # OAuth2PasswordRequestForm uses 'username' field, but we'll treat it as email
+    from core.logging_config import logger
+    logger.info(f"Login attempt for: {form_data.username}")
+    
     result = await db.execute(select(User).where(User.email == form_data.username))
     user = result.scalar_one_or_none()
     
     if not user or not verify_password(form_data.password, user.hashed_password):
+        logger.warning(f"Failed login attempt for: {form_data.username}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -102,6 +115,8 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     access_token = create_access_token(
         data={"sub": user.email}, expires_delta=access_token_expires
     )
+    
+    logger.info(f"Successful login for: {user.email}, token created with SECRET_KEY: {settings.SECRET_KEY[:10]}...")
     
     return Token(access_token=access_token, token_type="bearer")
 

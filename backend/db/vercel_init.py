@@ -162,7 +162,7 @@ async def ensure_database_initialized():
             db.add(skill_progress)
             await db.commit()
             
-            logger.info("Database initialized successfully!")
+            logger.info(f"Database initialized successfully with {len(created_users)} users!")
             _initialized = True
         
         await engine.dispose()

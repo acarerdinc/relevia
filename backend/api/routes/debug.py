@@ -29,15 +29,32 @@ async def test_database(db: AsyncSession = Depends(get_db)):
             rows = emails_result.fetchall()
             emails = [row[0] if isinstance(row, tuple) else row['email'] for row in rows]
             
+            from core.config import settings
+            db_type = "PostgreSQL" if settings.DATABASE_URL.startswith("postgresql") else "SQLite"
+            
             return {
                 "status": "ok", 
-                "database_type": "SQLite",
+                "database_type": db_type,
+                "database_url_prefix": settings.DATABASE_URL[:30] + "...",
                 "users_count": count,
                 "user_emails": emails
             }
         except Exception as e:
             logger.error(f"Users table error: {str(e)}")
-            return {"status": "error", "message": "Users table not found", "error": str(e)}
+            from core.config import settings
+            import os
+            db_type = "PostgreSQL" if settings.DATABASE_URL.startswith("postgresql") else "SQLite"
+            
+            return {
+                "status": "error", 
+                "message": "Users table not found", 
+                "error": str(e),
+                "database_type": db_type,
+                "database_url_prefix": settings.DATABASE_URL[:30] + "...",
+                "is_vercel": os.environ.get("VERCEL", "0"),
+                "has_postgres_url": bool(os.environ.get("POSTGRES_URL")),
+                "has_database_url": bool(os.environ.get("DATABASE_URL"))
+            }
             
     except Exception as e:
         logger.error(f"Database connection error: {str(e)}")

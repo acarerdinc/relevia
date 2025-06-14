@@ -27,7 +27,7 @@ async def test_database(db: AsyncSession = Depends(get_db)):
             # Get user emails
             emails_result = await db.execute(text("SELECT email FROM users"))
             rows = emails_result.fetchall()
-            emails = [row[0] if isinstance(row, tuple) else row['email'] for row in rows]
+            emails = [row[0] for row in rows]  # Always use index for raw SQL results
             
             from core.config import settings
             db_type = "PostgreSQL" if settings.DATABASE_URL.startswith("postgresql") else "SQLite"

@@ -36,11 +36,6 @@
       "Bash(git checkout:*)",
       "Bash(open:*)",
       "Bash(true)",
-      "Bash(git merge:*)",
-      "Bash(rg:*)",
-      "Bash(brew install:*)",
-      "Bash(gh auth:*)",
-      "Bash(git pull:*)",
       "Bash(touch:*)",
       "Bash(sqlite3:*)",
       "Bash(psql:*)",
@@ -50,9 +45,7 @@
       "WebFetch(domain:vercel.com)",
       "Bash(cat:*)",
       "Bash(cp:*)",
-      "Bash(./scripts/restart_server.sh:*)",
-      "Bash(./reset_db.sh:*)",
-      "WebFetch(domain:supabase.com)"
+      "Bash(tail:*)"
     ],
     "deny": []
   }

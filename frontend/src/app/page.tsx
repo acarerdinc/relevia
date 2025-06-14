@@ -67,7 +67,11 @@ export default function Home() {
                 🧠 Learning
               </button>
               <button
-                onClick={() => setCurrentView('progress')}
+                onClick={() => {
+                  // Always refresh the progress data when navigating to progress view
+                  setTreeRefreshKey(prev => prev + 1);
+                  setCurrentView('progress');
+                }}
                 className={`px-3 py-2 rounded-md text-sm font-medium ${
                   currentView === 'progress'
                     ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'

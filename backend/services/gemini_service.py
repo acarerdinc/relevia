@@ -160,7 +160,7 @@ Return ONLY the JSON object, no additional text."""
         import random
         
         # DEBUG MODE: Skip shuffling and just mark correct answer
-        debug_mode = True  # TODO: Make this configurable
+        debug_mode = False  # Disabled for production - enable only for testing
         
         if debug_mode:
             # Don't shuffle in debug mode - just mark the correct answer

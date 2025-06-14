@@ -11,7 +11,7 @@ class QuestionFormatter:
     Handles shuffling, debug markers, and answer validation.
     """
     
-    def __init__(self, debug_mode: bool = True):
+    def __init__(self, debug_mode: bool = False):
         self.debug_mode = debug_mode
     
     def format_question(self, question_data: Dict) -> Dict:
@@ -170,4 +170,4 @@ class QuestionFormatter:
         return False, user_answer
 
 # Global instance
-question_formatter = QuestionFormatter(debug_mode=True)
+question_formatter = QuestionFormatter(debug_mode=False)

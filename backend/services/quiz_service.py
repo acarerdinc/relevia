@@ -205,7 +205,7 @@ class AdaptiveQuizEngine:
         topic_accuracy = (topic_correct / topic_questions) if topic_questions > 0 else 0
         
         # DEBUG MODE: Skip shuffling and just mark correct answer
-        debug_mode = True  # TODO: Make this configurable
+        debug_mode = False  # Disabled for production - enable only for testing
         
         if debug_mode:
             # Don't shuffle in debug mode - just mark the correct answer

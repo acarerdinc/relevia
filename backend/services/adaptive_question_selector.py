@@ -488,7 +488,7 @@ class AdaptiveQuestionSelector:
         options = selected_question.options if selected_question.options else []
         
         # DEBUG MODE: Skip shuffling and just mark correct answer
-        debug_mode = True  # TODO: Make this configurable
+        debug_mode = False  # Disabled for production - enable only for testing
         
         if debug_mode:
             # Don't shuffle in debug mode - just mark the correct answer
@@ -984,7 +984,7 @@ Make sure the explanation:
             print(f"📝 Question concepts: {', '.join(proposed_concepts)}")
             
             # DEBUG MODE: Skip shuffling and just mark correct answer
-            debug_mode = True  # TODO: Make this configurable
+            debug_mode = False  # Disabled for production - enable only for testing
             
             if debug_mode:
                 # Don't shuffle in debug mode - just mark the correct answer
@@ -1065,7 +1065,7 @@ Make sure the explanation:
         print(f"🔧 Created fallback question for {topic_name} (difficulty {difficulty})")
         
         # DEBUG MODE: Skip shuffling and just mark correct answer
-        debug_mode = True  # TODO: Make this configurable
+        debug_mode = False  # Disabled for production - enable only for testing
         
         if debug_mode:
             # Don't shuffle in debug mode - just mark the correct answer

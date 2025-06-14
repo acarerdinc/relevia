@@ -100,8 +100,15 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     from core.logging_config import logger
     logger.info(f"Login attempt for: {form_data.username}")
     
-    result = await db.execute(select(User).where(User.email == form_data.username))
-    user = result.scalar_one_or_none()
+    try:
+        result = await db.execute(select(User).where(User.email == form_data.username))
+        user = result.scalar_one_or_none()
+    except Exception as e:
+        logger.error(f"Database error during login for {form_data.username}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error occurred"
+        )
     
     if not user or not verify_password(form_data.password, user.hashed_password):
         logger.warning(f"Failed login attempt for: {form_data.username}")

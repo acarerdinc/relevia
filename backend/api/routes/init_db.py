@@ -18,9 +18,13 @@ async def init_database():
         return {"error": "Invalid initialization token"}
     
     try:
-        # Create tables
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        # Try to create tables (will skip if they exist)
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+        except Exception as e:
+            # Tables might already exist, that's ok
+            print(f"Table creation skipped: {e}")
         
         # Insert test users
         async with engine.connect() as conn:

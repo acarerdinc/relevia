@@ -45,24 +45,21 @@ async def init_database():
             test_users = [
                 {
                     "email": "info@acarerdinc.com",
-                    "full_name": "Acar Erdinc",
+                    "username": "acarerdinc",
                     "password": "fenapass1",
-                    "is_active": True,
-                    "is_superuser": True
+                    "is_active": True
                 },
                 {
                     "email": "ogulcancelik@gmail.com", 
-                    "full_name": "Ogulcan Celik",
+                    "username": "ogulcancelik",
                     "password": "ordekzeze1",
-                    "is_active": True,
-                    "is_superuser": False
+                    "is_active": True
                 },
                 {
                     "email": "begumcitamak@gmail.com",
-                    "full_name": "Begum Citamak", 
+                    "username": "begumcitamak", 
                     "password": "zazapass1",
-                    "is_active": True,
-                    "is_superuser": False
+                    "is_active": True
                 }
             ]
             
@@ -72,15 +69,14 @@ async def init_database():
                 
                 await conn.execute(
                     text("""
-                        INSERT INTO users (email, full_name, hashed_password, is_active, is_superuser)
-                        VALUES (:email, :full_name, :hashed_password, :is_active, :is_superuser)
+                        INSERT INTO users (email, username, hashed_password, is_active)
+                        VALUES (:email, :username, :hashed_password, :is_active)
                     """),
                     {
                         "email": user_data["email"],
-                        "full_name": user_data["full_name"],
+                        "username": user_data["username"],
                         "hashed_password": hashed_password,
-                        "is_active": user_data["is_active"],
-                        "is_superuser": user_data["is_superuser"]
+                        "is_active": user_data["is_active"]
                     }
                 )
                 print(f"✓ Created user: {user_data['email']}")

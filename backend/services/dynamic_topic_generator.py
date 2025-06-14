@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from db.models import Topic, UserSkillProgress, UserInterest
 from services.gemini_service import GeminiService
+from services.mece_validator import mece_validator
 from core.logging_config import logger
 
 # Create specialized logger for subtopic generation
@@ -18,6 +19,8 @@ subtopic_logger = logger.getChild("subtopic_generation")
 class DynamicTopicGenerator:
     def __init__(self):
         self.gemini_service = GeminiService()
+        self.max_tree_depth = 5  # Limit tree depth to prevent over-specialization
+        self.max_siblings_per_parent = 12  # Reasonable limit for subtopics
     
     async def generate_subtopics(
         self, 
@@ -33,13 +36,19 @@ class DynamicTopicGenerator:
         subtopic_logger.info(f"🚀 [GEN:{generation_id}] Starting subtopic generation for '{parent_topic.name}' (ID: {parent_topic.id})")
         subtopic_logger.info(f"📊 [GEN:{generation_id}] User interests count: {len(user_interests)}, Requested count: {count}")
         
+        # Check tree depth to prevent over-specialization
+        current_depth = await self._get_topic_depth(db, parent_topic)
+        if current_depth >= self.max_tree_depth:
+            subtopic_logger.warning(f"⚠️ [GEN:{generation_id}] Maximum tree depth ({self.max_tree_depth}) reached. Skipping generation.")
+            return []
+        
         # Get user's interest level for this topic
         subtopic_logger.info(f"🔍 [GEN:{generation_id}] Getting user interest score...")
         interest_score = await self._get_user_interest_score(db, parent_topic.id, user_interests)
         subtopic_logger.info(f"📈 [GEN:{generation_id}] Interest score: {interest_score}")
         
         # Generate prompt based on parent topic and user interests (count=None means AI determines optimal number)
-        prompt = self._create_generation_prompt(parent_topic, user_interests, interest_score, count)
+        prompt = self._create_generation_prompt(parent_topic, user_interests, interest_score, count, current_depth)
         
         try:
             # Get AI response
@@ -52,11 +61,22 @@ class DynamicTopicGenerator:
                 print(f"❌ AI generation failed for {parent_topic.name} - no valid subtopics generated")
                 return []
             
-            # Validate MECE principles
-            if not self._validate_mece_principles(subtopics, parent_topic):
-                print(f"⚠️ Generated subtopics for {parent_topic.name} violate MECE principles - retrying with stronger instructions")
-                # TODO: Could add retry logic here
+            # Validate MECE principles with enhanced validator
+            cleaned_subtopics, violations = await mece_validator.validate_and_clean_subtopics(
+                subtopics, parent_topic, auto_fix=True
+            )
+            
+            if violations:
+                subtopic_logger.warning(f"⚠️ MECE violations found and fixed: {len(violations)} issues")
+                for v in violations[:3]:  # Log first 3 violations
+                    subtopic_logger.info(f"  - {v}")
+            
+            # Run basic validation on cleaned subtopics
+            if not self._validate_mece_principles(cleaned_subtopics, parent_topic):
+                subtopic_logger.error(f"❌ Cleaned subtopics still violate MECE principles")
                 return []
+            
+            subtopics = cleaned_subtopics
             
             print(f"✅ Generated {len(subtopics)} MECE-compliant subtopics for {parent_topic.name}")
             return subtopics
@@ -66,12 +86,33 @@ class DynamicTopicGenerator:
             subtopic_logger.error(f"📚 [GEN:{generation_id}] Stack trace:\n{traceback.format_exc()}")
             return []
     
+    async def _get_topic_depth(self, db: AsyncSession, topic: Topic) -> int:
+        """Calculate the depth of a topic in the tree"""
+        depth = 0
+        current_topic = topic
+        
+        while current_topic.parent_id:
+            depth += 1
+            if depth > self.max_tree_depth:  # Prevent infinite loops
+                break
+            
+            result = await db.execute(
+                select(Topic).where(Topic.id == current_topic.parent_id)
+            )
+            parent = result.scalar_one_or_none()
+            if not parent:
+                break
+            current_topic = parent
+        
+        return depth
+    
     def _create_generation_prompt(
         self, 
         parent_topic: Topic, 
         user_interests: List[Dict], 
         interest_score: float, 
-        count: int = None
+        count: int = None,
+        current_depth: int = 0
     ) -> str:
         """Create a prompt for Gemini to generate subtopics"""
         
@@ -88,66 +129,102 @@ class DynamicTopicGenerator:
         # Determine difficulty based on interest and current topic depth
         difficulty_guidance = self._get_difficulty_guidance(parent_topic, interest_score)
         
-        # Create high-level categories that organize the field, not specific techniques
-        depth_guidance = """
-Create HIGH-LEVEL CATEGORIES that organize this field into major conceptual areas, such as:
-- Core fundamentals and theory
-- Key methodologies and approaches
-- Applications and use cases  
-- Analysis and evaluation
-- Advanced topics and research frontiers
-
-AVOID overly specific techniques, algorithms, or narrow applications.
-Think like organizing a textbook's main chapters, not individual sections or techniques."""
+        # Depth-aware guidance to maintain consistent abstraction levels
+        depth_guidance = self._get_depth_guidance(current_depth)
+        
+        # Determine appropriate number of subtopics based on depth
+        if count is None:
+            if current_depth <= 1:
+                count_guidance = "Generate 3-7 major subdivisions that completely cover the topic."
+            elif current_depth <= 3:
+                count_guidance = "Generate 3-6 focused subdivisions."
+            else:
+                count_guidance = "Generate 2-4 specific subdivisions only if absolutely necessary."
+        else:
+            count_guidance = f"Generate exactly {count} subdivisions."
 
         prompt = f"""You are subdividing a topic into its fundamental knowledge domains. Your goal is to create a COMPLETE and NON-OVERLAPPING breakdown.
 
 Topic: "{parent_topic.name}"
 Description: "{parent_topic.description}"
+Tree Depth: Level {current_depth + 1} (Root = 0)
+
+{depth_guidance}
 
 CRITICAL REQUIREMENTS:
 1. MUTUALLY EXCLUSIVE: Each subtopic covers a distinct area with NO overlap between any subtopics
 2. COLLECTIVELY EXHAUSTIVE: Together, the subtopics must cover EVERYTHING in the parent topic
-3. KNOWLEDGE-FOCUSED: Generate conceptual divisions and paradigms, NOT methodologies or processes
-4. COMPLETE COVERAGE: A student mastering all generated subtopics should have comprehensive knowledge of "{parent_topic.name}"
+3. NO DUPLICATES: Each subtopic name must be unique - no repeating names
+4. NO SUBSETS: No subtopic should be a subset or special case of another sibling
+5. CONSISTENT ABSTRACTION: All subtopics at the same level should have similar levels of specificity
 
-METHODOLOGY - Apply MECE Principle:
-- Start by identifying ALL major areas within the topic
-- Group related concepts into broader categories to avoid overlap
-- Ensure no important area is left uncovered
-- Test: Can a concept belong to multiple subtopics? If yes, reorganize.
+MECE VALIDATION RULES:
+- Before finalizing, check every pair of subtopics for overlap
+- If two subtopics share >50% conceptual overlap, merge them
+- If one subtopic is entirely contained within another, remove or restructure
+- Ensure naming is distinct - avoid using the same key terms across siblings
 
-GOOD EXAMPLES (MECE):
-- For "Mathematics": Pure Mathematics, Applied Mathematics, Statistics & Probability (non-overlapping domains)
-- For "Biology": Molecular Biology, Ecology, Evolution & Genetics, Physiology (distinct scales/approaches)
-- For "Computer Science": Theoretical Foundations, Systems & Software, Data & AI, Human-Computer Interaction (orthogonal areas)
+EXAMPLES OF VIOLATIONS TO AVOID:
+- "Machine Learning" and "Deep Learning" as siblings (Deep Learning ⊂ Machine Learning)
+- "Neural Networks" and "Neural Network Architectures" as siblings (redundant)
+- "Computer Vision" and "Computer Vision Applications" as siblings (one contains the other)
+- Having both generic "Applications" and specific application areas as siblings
 
-BAD EXAMPLES (VIOLATE MECE):
-- For "Mathematics": Algebra, Calculus, Problem Solving (Problem Solving uses Algebra & Calculus)
-- For "Biology": Genetics, Molecular Biology, DNA (Genetics includes DNA, overlaps with Molecular Biology)
-- For "Computer Science": Programming, Software Engineering, Web Development (Web Dev is part of Programming/Software Eng)
+{count_guidance}
 
-VALIDATION CHECKLIST:
-✓ Each subtopic addresses a different fundamental question or aspect
-✓ No subtopic is a subset, tool, or application of another
-✓ Combined subtopics represent 100% of the parent topic's scope
-✓ An expert could specialize in one subtopic without deep knowledge of others
-
-Generate AS MANY subtopics as needed to create a complete MECE breakdown of "{parent_topic.name}". 
-Do not limit yourself to a fixed number - generate however many subtopics are required for proper coverage.
+POST-GENERATION CHECKLIST:
+✓ No two subtopics have names that differ by only one word
+✓ No subtopic name contains another subtopic's name
+✓ Each subtopic addresses a fundamentally different aspect
+✓ Combined coverage = 100% of parent topic
+✓ An expert in one subtopic doesn't necessarily need deep knowledge of others
 
 Return ONLY this JSON:
 [
   {{
-    "name": "Subdivision Name",
-    "description": "What this subdivision covers",
+    "name": "Unique Subdivision Name",
+    "description": "Clear description of what this uniquely covers",
     "difficulty_min": {max(1, parent_topic.difficulty_min)},
     "difficulty_max": {min(10, parent_topic.difficulty_max + 1)},
-    "learning_objectives": ["Learn core concepts", "Understand principles", "Apply knowledge"]
+    "learning_objectives": ["Specific objective 1", "Specific objective 2", "Specific objective 3"]
   }}
 ]"""
 
         return prompt
+    
+    def _get_depth_guidance(self, depth: int) -> str:
+        """Get generation guidance based on tree depth"""
+        if depth == 0:
+            return """
+DEPTH GUIDANCE (Root Level):
+You are creating the MAJOR BRANCHES of this field. Think of the highest-level divisions that organize 
+all knowledge in this domain. These should be broad conceptual categories that could each be a 
+separate course or textbook.
+"""
+        elif depth == 1:
+            return """
+DEPTH GUIDANCE (Level 1):
+You are subdividing a major branch. Create the primary subdivisions that organize this branch into 
+its main components. Think of chapter-level divisions in a textbook about this specific branch.
+"""
+        elif depth == 2:
+            return """
+DEPTH GUIDANCE (Level 2):
+You are creating focused areas within a subdivision. These should be specific enough to guide learning 
+but broad enough to contain multiple concepts. Think section-level divisions within a chapter.
+"""
+        elif depth == 3:
+            return """
+DEPTH GUIDANCE (Level 3):
+You are approaching maximum specificity. Only create subdivisions if they represent fundamentally 
+different approaches or paradigms. Avoid creating topics that are just examples or applications.
+"""
+        else:
+            return """
+DEPTH GUIDANCE (Deep Level):
+You are at maximum depth. Only subdivide if absolutely critical for organizing genuinely distinct 
+concepts that cannot be learned together. Most topics at this level should NOT be further subdivided.
+"""
     
     def _get_difficulty_guidance(self, parent_topic: Topic, interest_score: float) -> str:
         """Generate difficulty guidance based on topic depth and interest"""
@@ -247,15 +324,43 @@ Return ONLY this JSON:
             return None
     
     def _validate_mece_principles(self, subtopics: List[Dict], parent_topic: Topic) -> bool:
-        """Validate that generated subtopics follow MECE principles"""
+        """Enhanced MECE validation with stricter rules"""
         
         if len(subtopics) < 2:
             subtopic_logger.warning(f"⚠️ MECE: Only {len(subtopics)} subtopics generated - likely not comprehensive")
             return False
         
+        if len(subtopics) > self.max_siblings_per_parent:
+            subtopic_logger.warning(f"⚠️ MECE: Too many subtopics ({len(subtopics)}) - likely too granular")
+            return False
+        
         # Check for obvious overlaps in names
         topic_names = [s['name'].lower() for s in subtopics]
         parent_name_lower = parent_topic.name.lower()
+        
+        # Enhanced duplicate detection
+        seen_names = set()
+        for name in topic_names:
+            if name in seen_names:
+                subtopic_logger.error(f"❌ MECE: Exact duplicate found: '{name}'")
+                return False
+            seen_names.add(name)
+        
+        # Check for subset relationships in names
+        for i, name1 in enumerate(topic_names):
+            for j, name2 in enumerate(topic_names):
+                if i != j:
+                    # One name contains the other
+                    if name1 in name2 or name2 in name1:
+                        subtopic_logger.warning(f"⚠️ MECE: Subset relationship: '{name1}' and '{name2}'")
+                        return False
+                    
+                    # Names differ by only one word
+                    words1 = set(name1.split())
+                    words2 = set(name2.split())
+                    if len(words1) == len(words2) and len(words1 - words2) == 1:
+                        subtopic_logger.warning(f"⚠️ MECE: Too similar: '{name1}' and '{name2}'")
+                        return False
         
         # Known problematic combinations that violate MECE
         # BUT: Don't flag if one of the terms is the parent topic itself
@@ -307,30 +412,23 @@ Return ONLY this JSON:
                     subtopic_logger.warning(f"⚠️ MECE: Duplicate topic names: '{name1}'")
                     return False
                 
-                # Check for very similar names (>80% overlap in words)
-                words1 = set(name1.split())
-                words2 = set(name2.split())
-                if len(words1 & words2) / max(len(words1), len(words2)) > 0.8:
-                    print(f"⚠️ Very similar topic names: '{name1}' and '{name2}'")
-                    return False
+                # Check for high word overlap (>60% is too similar for siblings)
+                words1 = set(name1.split()) - {'of', 'and', 'the', 'in', 'for', 'with', 'to', 'a', 'an'}
+                words2 = set(name2.split()) - {'of', 'and', 'the', 'in', 'for', 'with', 'to', 'a', 'an'}
+                if words1 and words2:  # Avoid division by zero
+                    overlap_ratio = len(words1 & words2) / min(len(words1), len(words2))
+                    if overlap_ratio > 0.6:
+                        subtopic_logger.warning(f"⚠️ MECE: High word overlap ({overlap_ratio:.0%}): '{name1}' and '{name2}'")
+                        return False
         
-        # For AI specifically, ensure comprehensive coverage
-        if parent_topic.name == "Artificial Intelligence":
-            expected_domains = [
-                'machine learning', 'natural language', 'computer vision', 
-                'robotics', 'knowledge', 'expert system', 'reasoning', 'ethics'
-            ]
-            covered_domains = []
+        # Check for "generic + specific" pattern violations
+        generic_terms = ['applications', 'techniques', 'methods', 'approaches', 'systems', 'models']
+        for term in generic_terms:
+            has_generic = any(term in name and len(name.split()) <= 3 for name in topic_names)
+            has_specific = any(term in name and len(name.split()) > 3 for name in topic_names)
             
-            for name in topic_names:
-                for domain in expected_domains:
-                    if domain in name:
-                        covered_domains.append(domain)
-                        break
-            
-            coverage_ratio = len(set(covered_domains)) / len(expected_domains)
-            if coverage_ratio < 0.4:  # Should cover at least 40% of major AI domains (relaxed)
-                print(f"⚠️ AI subtopics only cover {coverage_ratio:.0%} of major domains - not collectively exhaustive")
+            if has_generic and has_specific:
+                subtopic_logger.warning(f"⚠️ MECE: Both generic and specific '{term}' topics present")
                 return False
         
         subtopic_logger.info(f"✅ MECE validation passed for {len(subtopics)} subtopics")
@@ -372,6 +470,20 @@ Return ONLY this JSON:
     ) -> List[Topic]:
         """Create the generated subtopics in the database"""
         subtopic_logger.info(f"💾 [DB] Starting database creation for {len(subtopics_data)} subtopics under parent_id={parent_id}")
+        
+        # Get parent topic for final validation
+        parent_result = await db.execute(select(Topic).where(Topic.id == parent_id))
+        parent_topic = parent_result.scalar_one_or_none()
+        
+        if parent_topic:
+            # Final MECE validation before database insertion
+            cleaned_data, violations = await mece_validator.validate_and_clean_subtopics(
+                subtopics_data, parent_topic, auto_fix=True
+            )
+            if violations:
+                subtopic_logger.info(f"📝 [DB] Pre-insertion cleanup: {len(violations)} issues fixed")
+            subtopics_data = cleaned_data
+        
         created_topics = []
         
         for i, subtopic_data in enumerate(subtopics_data):

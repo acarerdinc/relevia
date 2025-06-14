@@ -3,3 +3,4 @@ Never use fallback mechanisms unless explicitly requested.
 Avoid temporary fixes. When the user gives an example error, find the root cause and fix it.
 Don't create solutions for specific examples for bugs, find the root cause and fix the general issue.
 NEVER restart the backend server. It automatically detects changes anyway. If you need to start the server tell the user to do it.
+ALWAYS WORK ON DEV BRANCH! NEVER WORK ON MAIN BRANCH!

@@ -46,14 +46,20 @@ async def ensure_database_initialized():
                 # asyncpg requires different SSL parameter format
                 # Remove any existing ssl/sslmode parameters
                 import re
-                database_url = re.sub(r'[?&](ssl|sslmode|pgbouncer)=[^&]*', '', database_url)
-                # Add asyncpg-compatible SSL parameter
-                if "?" in database_url:
-                    database_url += "&ssl=require"
+                database_url = re.sub(r'[?&](ssl|sslmode|pgbouncer|statement_cache_size)=[^&]*', '', database_url)
+                # Add asyncpg-compatible SSL parameter and pgbouncer flag
+                if "pooler.supabase.com:6543" in database_url:
+                    # Transaction pooler needs special handling
+                    if "?" in database_url:
+                        database_url += "&ssl=require&pgbouncer=true&statement_cache_size=0"
+                    else:
+                        database_url += "?ssl=require&pgbouncer=true&statement_cache_size=0"
                 else:
-                    database_url += "?ssl=require"
-                
-                # Transaction pooler is on port 6543
+                    # Direct connection
+                    if "?" in database_url:
+                        database_url += "&ssl=require"
+                    else:
+                        database_url += "?ssl=require"
         
         # Log connection details (without password)
         if database_url and "://" in database_url:
@@ -74,14 +80,14 @@ async def ensure_database_initialized():
         # Create engine for this initialization
         engine_kwargs = {"echo": False, "pool_pre_ping": True}
         
-        # For Supabase transaction pooler, disable prepared statements completely
+        # For Supabase transaction pooler, use NullPool for serverless
         if "pooler.supabase.com:6543" in database_url:
             from sqlalchemy.pool import NullPool
             engine_kwargs["poolclass"] = NullPool
+            # Disable prepared statements at the connection level
             engine_kwargs["connect_args"] = {
-                "statement_cache_size": 0,
-                "prepared_statement_cache_size": 0,
-                "server_settings": {"jit": "off"}
+                "server_settings": {"jit": "off"},
+                "command_timeout": 60
             }
         
         engine = create_async_engine(database_url, **engine_kwargs)

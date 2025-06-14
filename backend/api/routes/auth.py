@@ -111,6 +111,11 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
             )
         
         if row:
+            # Debug: log retrieved data
+            logger.info(f"User found: {row['email']}, active: {row['is_active']}")
+            logger.info(f"Hash from DB: {row['hashed_password'][:20]}... (truncated)")
+            logger.info(f"Hash length: {len(row['hashed_password'])}")
+            
             # Manually create user object from row
             user = type('User', (), {
                 'id': row['id'],
@@ -121,6 +126,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
             })()
         else:
             user = None
+            logger.warning(f"No user found for email: {form_data.username}")
             
     except Exception as e:
         logger.error(f"Database error during login for {form_data.username}: {e}")
@@ -129,8 +135,23 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
             detail="Database error occurred"
         )
     
-    if not user or not verify_password(form_data.password, user.hashed_password):
-        logger.warning(f"Failed login attempt for: {form_data.username}")
+    if not user:
+        logger.warning(f"Failed login attempt - user not found: {form_data.username}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Debug password verification
+    logger.info(f"Attempting password verification for {user.email}")
+    logger.info(f"Password provided: {form_data.password[:3]}... (truncated)")
+    
+    is_valid = verify_password(form_data.password, user.hashed_password)
+    logger.info(f"Password verification result: {is_valid}")
+    
+    if not is_valid:
+        logger.warning(f"Failed login attempt - invalid password for: {form_data.username}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",

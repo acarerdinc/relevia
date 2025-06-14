@@ -11,6 +11,9 @@ postgres_url = os.environ.get("POSTGRES_URL")
 # Convert postgresql:// to postgresql+asyncpg:// for async support
 if postgres_url and postgres_url.startswith("postgresql://"):
     postgres_url = postgres_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    # Remove pgbouncer parameter if present (not compatible with asyncpg)
+    if "?pgbouncer=true" in postgres_url:
+        postgres_url = postgres_url.replace("?pgbouncer=true", "")
 
 # Determine database URL based on environment
 if is_vercel and not postgres_url:

@@ -2,6 +2,13 @@
 
 An intelligent learning platform that uses **Multi-Armed Bandit algorithms** and **dynamic ontology expansion** to create personalized, infinite learning experiences. The system adapts to user interests and proficiency levels, automatically generating questions and unlocking specialized topics.
 
+## 🚀 Live Deployment
+
+- **Frontend**: https://relevia.vercel.app
+- **Backend API**: https://relevia-backend.vercel.app
+
+Automatic deployment is configured from the `main` branch.
+
 ## 🌟 Key Features
 
 ### 🎯 **Adaptive Learning Algorithm**

@@ -11,6 +11,7 @@ from pydantic import BaseModel, EmailStr
 from db.database import get_db
 from db.models import User
 from core.config import settings
+from core.logging_config import logger
 
 router = APIRouter()
 
@@ -64,7 +65,6 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
     )
     try:
         # Debug logging
-        from core.logging_config import logger
         logger.debug(f"Validating token: {token[:20]}... with SECRET_KEY: {settings.SECRET_KEY[:10]}...")
         
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
@@ -97,8 +97,6 @@ async def register(user_data: UserRegister, db: AsyncSession = Depends(get_db)):
 @router.post("/login", response_model=Token)
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
     # OAuth2PasswordRequestForm uses 'username' field, but we'll treat it as email
-    from core.logging_config import logger
-    from db.database import is_turso
     logger.info(f"Login attempt for: {form_data.username}")
     
     try:
@@ -127,7 +125,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     
     logger.info(f"Successful login for: {user.email}, token created with SECRET_KEY: {settings.SECRET_KEY[:10]}...")
     
-    return Token(access_token=access_token, token_type="bearer")
+    return {"access_token": access_token, "token_type": "bearer"}
 
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: User = Depends(get_current_user)):

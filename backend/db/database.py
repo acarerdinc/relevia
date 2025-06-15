@@ -59,18 +59,29 @@ async def get_raw_pool():
     if _raw_pool is None and is_postgresql and is_vercel:
         # Extract connection details from DATABASE_URL
         import re
-        match = re.match(r'postgresql://([^:]+):([^@]+)@([^/]+)/(.+)', database_url)
+        from core.logging_config import logger
+        
+        logger.info(f"Creating raw pool for URL prefix: {database_url[:30]}...")
+        
+        # Try both postgresql:// and postgres:// patterns
+        match = re.match(r'postgres(?:ql)?://([^:]+):([^@]+)@([^/]+)/(.+)', database_url)
         if match:
             user, password, host, database = match.groups()
-            _raw_pool = await asyncpg.create_pool(
-                host=host.split(':')[0],
-                port=int(host.split(':')[1]) if ':' in host else 5432,
-                user=user,
-                password=password,
-                database=database.split('?')[0],
-                min_size=1,
-                max_size=2,
-                command_timeout=60,
-                statement_cache_size=0  # Disable prepared statements for pgbouncer
-            )
+            try:
+                _raw_pool = await asyncpg.create_pool(
+                    host=host.split(':')[0],
+                    port=int(host.split(':')[1]) if ':' in host else 5432,
+                    user=user,
+                    password=password,
+                    database=database.split('?')[0],
+                    min_size=1,
+                    max_size=2,
+                    command_timeout=60,
+                    statement_cache_size=0  # Disable prepared statements for pgbouncer
+                )
+                logger.info("Raw asyncpg pool created successfully")
+            except Exception as e:
+                logger.error(f"Failed to create raw pool: {e}")
+        else:
+            logger.error(f"Could not parse database URL")
     return _raw_pool

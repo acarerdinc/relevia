@@ -16,6 +16,7 @@ from core.mastery_levels import (
     TREE_NAVIGATION_THRESHOLD
 )
 import json
+import math
 
 class MasteryProgressService:
     """Manages user mastery progression within topics"""
@@ -140,7 +141,8 @@ class MasteryProgressService:
         advanced = False
         new_level = current_level
         
-        if can_advance_mastery(questions_at_current, correct_answers_at_level, current_level):
+        # Pass correct_answers_at_level for both parameters since we only care about correct answers now
+        if can_advance_mastery(correct_answers_at_level, correct_answers_at_level, current_level):
             next_level = get_next_mastery_level(current_level)
             if next_level:
                 progress.current_mastery_level = next_level.value
@@ -148,19 +150,8 @@ class MasteryProgressService:
                 new_level = next_level
                 advanced = True
                 
-                # Start tracking at new level (this question counts for the new level)
-                next_level_stats = mastery_questions.get(next_level.value, {"total": 0, "correct": 0})
-                next_level_stats["total"] += 1
-                if is_correct:
-                    next_level_stats["correct"] += 1
-                mastery_questions[next_level.value] = next_level_stats
-                progress.mastery_questions_answered = mastery_questions
-                
-                # Force SQLAlchemy to detect the JSON field change
-                from sqlalchemy.orm import attributes
-                attributes.flag_modified(progress, "mastery_questions_answered")
-                
-                print(f"🎉 LEVEL UP! {current_level.value} → {next_level.value}, starting fresh at {next_level.value} with 1 question")
+                # Don't count this question towards the new level - start fresh
+                print(f"🎉 LEVEL UP! {current_level.value} → {next_level.value}, starting fresh at {next_level.value}")
         
         # Update tree navigation capability
         if new_level.value in [TREE_NAVIGATION_THRESHOLD.value, MasteryLevel.PROFICIENT.value, MasteryLevel.EXPERT.value, MasteryLevel.MASTER.value]:
@@ -172,7 +163,8 @@ class MasteryProgressService:
         questions_needed = 0
         if not advanced and new_level != MasteryLevel.MASTER:
             required_questions = QUESTIONS_PER_LEVEL[new_level]
-            questions_needed = max(0, required_questions - questions_at_current)
+            # Just need the required number of correct answers
+            questions_needed = max(0, required_questions - correct_answers_at_level)
         
         return {
             "advanced": advanced,
@@ -180,6 +172,7 @@ class MasteryProgressService:
             "new_level": new_level.value,
             "current_level": new_level.value,  # Add current_level for frontend consistency
             "questions_at_level": questions_at_current,
+            "correct_at_level": correct_answers_at_level,  # Add correct answers count
             "questions_needed": questions_needed,
             "accuracy": overall_accuracy,
             "can_navigate_tree": progress.proficiency_threshold_met
@@ -197,10 +190,21 @@ class MasteryProgressService:
         current_level = MasteryLevel(progress.current_mastery_level)
         
         mastery_questions = progress.mastery_questions_answered or {
-            "novice": 0, "competent": 0, "proficient": 0, "expert": 0, "master": 0
+            "novice": {"total": 0, "correct": 0}, 
+            "competent": {"total": 0, "correct": 0}, 
+            "proficient": {"total": 0, "correct": 0}, 
+            "expert": {"total": 0, "correct": 0}, 
+            "master": {"total": 0, "correct": 0}
         }
         
-        questions_at_current = mastery_questions.get(current_level.value, 0)
+        # Handle both old and new format
+        if isinstance(mastery_questions.get(current_level.value, 0), int):
+            questions_at_current = mastery_questions.get(current_level.value, 0)
+            correct_at_current = questions_at_current  # Assume all were correct in old format
+        else:
+            level_stats = mastery_questions.get(current_level.value, {"total": 0, "correct": 0})
+            questions_at_current = level_stats["total"]
+            correct_at_current = level_stats["correct"]
         required_questions = QUESTIONS_PER_LEVEL.get(current_level, 8)
         
         # If user hasn't completed enough questions at current level, stay there
@@ -209,7 +213,8 @@ class MasteryProgressService:
         
         # If they can advance, move to next level
         accuracy = progress.correct_answers / progress.questions_answered if progress.questions_answered > 0 else 0
-        if can_advance_mastery(questions_at_current, progress.correct_answers, current_level):
+        # Pass correct_at_current for both parameters since we only care about correct answers now
+        if can_advance_mastery(correct_at_current, correct_at_current, current_level):
             next_level = get_next_mastery_level(current_level)
             return next_level if next_level else current_level
         
@@ -268,7 +273,13 @@ class MasteryProgressService:
                 correct_answers=0,
                 mastery_level="novice",
                 current_mastery_level="novice",
-                mastery_questions_answered={"novice": 0, "competent": 0, "proficient": 0, "expert": 0, "master": 0},
+                mastery_questions_answered={
+                    "novice": {"total": 0, "correct": 0}, 
+                    "competent": {"total": 0, "correct": 0}, 
+                    "proficient": {"total": 0, "correct": 0}, 
+                    "expert": {"total": 0, "correct": 0}, 
+                    "master": {"total": 0, "correct": 0}
+                },
                 is_unlocked=True,
                 proficiency_threshold_met=False
             )
@@ -289,17 +300,31 @@ class MasteryProgressService:
         current_level = MasteryLevel(progress.current_mastery_level)
         
         mastery_questions = progress.mastery_questions_answered or {
-            "novice": 0, "competent": 0, "proficient": 0, "expert": 0, "master": 0
+            "novice": {"total": 0, "correct": 0}, 
+            "competent": {"total": 0, "correct": 0}, 
+            "proficient": {"total": 0, "correct": 0}, 
+            "expert": {"total": 0, "correct": 0}, 
+            "master": {"total": 0, "correct": 0}
         }
         
-        questions_at_current = mastery_questions.get(current_level.value, 0)
+        # Handle migration from old format if needed
+        if isinstance(mastery_questions.get(current_level.value, 0), int):
+            # This method doesn't have the correct counts from old format, so return 0
+            questions_at_current = 0
+            correct_at_current = 0
+        else:
+            level_stats = mastery_questions.get(current_level.value, {"total": 0, "correct": 0})
+            questions_at_current = level_stats["total"]
+            correct_at_current = level_stats["correct"]
+        
         overall_accuracy = progress.correct_answers / progress.questions_answered if progress.questions_answered > 0 else 0
         
         # Calculate questions needed for next level
         questions_needed = 0
         if current_level != MasteryLevel.MASTER:
             required_questions = QUESTIONS_PER_LEVEL[current_level]
-            questions_needed = max(0, required_questions - questions_at_current)
+            # Just need the required number of correct answers
+            questions_needed = max(0, required_questions - correct_at_current)
         
         return {
             "advanced": False,  # No advancement since this is just status
@@ -307,6 +332,7 @@ class MasteryProgressService:
             "new_level": current_level.value,
             "current_level": current_level.value,
             "questions_at_level": questions_at_current,
+            "correct_at_level": correct_at_current,  # Add correct answers count
             "questions_needed": questions_needed,
             "accuracy": overall_accuracy,
             "can_navigate_tree": progress.proficiency_threshold_met

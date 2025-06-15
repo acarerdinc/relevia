@@ -23,16 +23,17 @@ MASTERY_PROGRESSION = [
     MasteryLevel.MASTER
 ]
 
-# Questions required to advance to next level
+# Correct answers required to advance to next level
 QUESTIONS_PER_LEVEL = {
-    MasteryLevel.NOVICE: 8,      # 8 questions to become competent
-    MasteryLevel.COMPETENT: 12,  # 12 questions to become proficient
-    MasteryLevel.PROFICIENT: 15, # 15 questions to become expert
-    MasteryLevel.EXPERT: 20,     # 20 questions to become master
+    MasteryLevel.NOVICE: 8,      # 8 correct answers to become competent
+    MasteryLevel.COMPETENT: 12,  # 12 correct answers to become proficient
+    MasteryLevel.PROFICIENT: 15, # 15 correct answers to become expert
+    MasteryLevel.EXPERT: 20,     # 20 correct answers to become master
     MasteryLevel.MASTER: 0       # Master is final level
 }
 
-# Accuracy threshold to advance (percentage)
+# Accuracy threshold to advance (percentage) - NO LONGER USED
+# Kept for reference but system now uses correct answer count only
 ACCURACY_THRESHOLD = {
     MasteryLevel.NOVICE: 0.70,     # 70% accuracy needed
     MasteryLevel.COMPETENT: 0.75,  # 75% accuracy needed  
@@ -84,18 +85,14 @@ def get_next_mastery_level(current_level: MasteryLevel) -> MasteryLevel | None:
         return MasteryLevel.NOVICE
 
 def can_advance_mastery(questions_answered: int, correct_answers: int, current_level: MasteryLevel) -> bool:
-    """Check if user can advance to next mastery level"""
+    """Check if user can advance to next mastery level based on correct answers only"""
     if current_level == MasteryLevel.MASTER:
         return False
         
-    required_questions = QUESTIONS_PER_LEVEL[current_level]
-    required_accuracy = ACCURACY_THRESHOLD[current_level]
+    required_correct_answers = QUESTIONS_PER_LEVEL[current_level]
     
-    if questions_answered < required_questions:
-        return False
-        
-    accuracy = correct_answers / questions_answered if questions_answered > 0 else 0
-    return accuracy >= required_accuracy
+    # Just check if they have enough correct answers
+    return correct_answers >= required_correct_answers
 
 def get_mastery_progress(questions_answered: int, current_level: MasteryLevel) -> Dict:
     """Get progress towards next mastery level"""

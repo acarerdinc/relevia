@@ -9,7 +9,6 @@ import asyncio
 from core.logging_config import logger
 
 from db.database import get_db
-from db.connection_manager import connection_manager, with_retry
 from db.models import User
 from api.routes.auth import get_current_user, get_current_user_light
 from services.adaptive_quiz_service import adaptive_quiz_service
@@ -25,13 +24,12 @@ class AdaptiveAnswerRequest(BaseModel):
 
 
 @router.post("/start")
-@with_retry(timeout=10.0)
 async def start_adaptive_learning(
     user_id: int,
-    db: AsyncSession = None
+    db: AsyncSession = Depends(get_db)
 ):
     """
-    Start an adaptive learning session with retry logic
+    Start an adaptive learning session
     No topic selection required - system intelligently selects best content
     """
     try:
@@ -42,13 +40,12 @@ async def start_adaptive_learning(
 
 
 @router.get("/question/{session_id}")
-@with_retry(timeout=10.0)
 async def get_next_question(
     session_id: int,
-    db: AsyncSession = None
+    db: AsyncSession = Depends(get_db)
 ):
     """
-    Get next question using adaptive exploration/exploitation algorithm with retry logic
+    Get next question using adaptive exploration/exploitation algorithm
     Automatically selects the best question across all topics
     """
     try:
@@ -73,13 +70,12 @@ async def get_next_question(
 
 
 @router.post("/answer")
-@with_retry(timeout=15.0)
 async def submit_answer(
     request: AdaptiveAnswerRequest,
-    db: AsyncSession = None
+    db: AsyncSession = Depends(get_db)
 ):
     """
-    Submit answer with full adaptive learning pipeline and retry logic
+    Submit answer with full adaptive learning pipeline
     Handles answer evaluation, interest tracking, and discovery
     """
     try:
@@ -97,13 +93,12 @@ async def submit_answer(
 
 
 @router.get("/dashboard/{user_id}")
-@with_retry(timeout=10.0)
 async def get_learning_dashboard(
     user_id: int,
-    db: AsyncSession = None
+    db: AsyncSession = Depends(get_db)
 ):
     """
-    Get comprehensive learning dashboard for simplified UI with retry logic
+    Get comprehensive learning dashboard for simplified UI
     Shows learning state, interests, achievements, and recommendations
     """
     try:
@@ -147,13 +142,12 @@ async def continue_learning(
 
 
 @router.get("/insights/{user_id}")
-@with_retry(timeout=10.0)
 async def get_learning_insights(
     user_id: int,
-    db: AsyncSession = None
+    db: AsyncSession = Depends(get_db)
 ):
     """
-    Get detailed learning insights and analytics with retry logic
+    Get detailed learning insights and analytics
     For power users who want to see their learning patterns
     """
     try:
@@ -180,15 +174,14 @@ async def get_learning_insights(
 
 
 @router.post("/feedback")
-@with_retry(timeout=5.0)
 async def submit_session_feedback(
     session_id: int,
     rating: int,  # 1-5 stars
     feedback: Optional[str] = None,
-    db: AsyncSession = None
+    db: AsyncSession = Depends(get_db)
 ):
     """
-    Submit feedback about the adaptive learning session with retry logic
+    Submit feedback about the adaptive learning session
     Used to improve the exploration/exploitation algorithm
     """
     try:

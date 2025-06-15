@@ -28,7 +28,7 @@ if is_postgresql and is_vercel:
             "server_settings": {
                 "jit": "off"
             },
-            "command_timeout": 60,
+            "command_timeout": 10,  # Reduce timeout to fail fast
             "prepared_statement_cache_size": 0,  # Disable prepared statements for pgbouncer
             "statement_cache_size": 0,  # Also try this variant
             # Generate unique prepared statement names to avoid conflicts

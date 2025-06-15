@@ -5,6 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from typing import Optional, Union
+import asyncio
+from core.logging_config import logger
 
 from db.database import get_db
 from db.models import User
@@ -112,40 +114,41 @@ async def continue_learning(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Smart continue learning endpoint
-    Automatically starts session and gets first question in one call
+    Smart continue learning endpoint - simplified version
+    Returns basic session info quickly
     """
     try:
-        # Start adaptive session
-        session_data = await adaptive_quiz_service.start_adaptive_session(db, current_user.id)
-        session_id = session_data["session_id"]
+        # For now, just return a simple response to avoid timeouts
+        # The frontend can call the separate endpoints as needed
+        from db.models import QuizSession
+        from datetime import datetime
         
-        # Get first question
-        question_data = await adaptive_quiz_service.get_next_adaptive_question(db, session_id)
+        # Create a simple session
+        session = QuizSession(
+            user_id=current_user.id,
+            session_type="adaptive",
+            created_at=datetime.utcnow(),
+            is_adaptive=True
+        )
+        db.add(session)
+        await db.commit()
+        await db.refresh(session)
         
-        if not question_data or "error" in question_data:
-            # Return session info with suggestion to explore
-            return {
-                **session_data,
-                "error": "no_questions_available",
-                "suggestion": "explore_new_areas", 
-                "message": "Ready to learn! Let's start by exploring some foundational topics."
-            }
+        logger.info(f"Created simple session {session.id} for user {current_user.id}")
         
-        # Start prefetching second question immediately for faster UX
-        import asyncio
-        from services.question_cache_service import question_cache_service
-        asyncio.create_task(question_cache_service.prefetch_next_question(current_user.id, session_id))
-        
-        # Return combined session + question data
         return {
-            "session": session_data,
-            "question": question_data,
-            "ready_to_learn": True
+            "session": {
+                "session_id": session.id,
+                "session_type": "adaptive",
+                "user_id": current_user.id
+            },
+            "message": "Session created. Loading questions...",
+            "next_action": "call_get_question_endpoint"
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to continue learning: {str(e)}")
+        logger.error(f"Error in continue learning: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to start session: {str(e)}")
 
 
 @router.get("/insights/{user_id}")

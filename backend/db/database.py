@@ -21,8 +21,9 @@ is_postgresql = database_url.startswith("postgresql") or database_url.startswith
 is_turso = database_url.startswith("libsql") or database_url.startswith("turso")
 is_vercel = os.environ.get("VERCEL", "0") == "1"
 is_railway = os.environ.get("RAILWAY_ENVIRONMENT") is not None
+is_render = os.environ.get("RENDER") is not None
 
-logger.info(f"Database configuration: postgresql={is_postgresql}, pooler={is_pooler_url}, vercel={is_vercel}, railway={is_railway}")
+logger.info(f"Database configuration: postgresql={is_postgresql}, pooler={is_pooler_url}, vercel={is_vercel}, railway={is_railway}, render={is_render}")
 
 if is_postgresql and (is_vercel or is_pooler_url):
     # Optimized configuration for Supabase/Supavisor + Vercel
@@ -47,8 +48,8 @@ if is_postgresql and (is_vercel or is_pooler_url):
         }
     }
     logger.info("Using optimized serverless configuration for Supabase/Supavisor")
-elif is_railway and is_postgresql:
-    # Railway-specific configuration for better performance
+elif (is_railway or is_render) and is_postgresql:
+    # Railway/Render-specific configuration for better performance
     engine_kwargs = {
         "echo": False,
         "pool_pre_ping": True,
@@ -58,12 +59,12 @@ elif is_railway and is_postgresql:
         "connect_args": {
             "server_settings": {
                 "jit": "off",
-                "application_name": "relevia_railway"
+                "application_name": "relevia_backend"
             },
             "command_timeout": 10,
         }
     }
-    logger.info("Using optimized Railway configuration")
+    logger.info(f"Using optimized {'Render' if is_render else 'Railway'} configuration")
 else:
     # Standard configuration for local development
     engine_kwargs = {

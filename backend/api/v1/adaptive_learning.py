@@ -110,35 +110,37 @@ async def get_learning_dashboard(
 
 @router.get("/continue")
 async def continue_learning(
-    current_user: dict = Depends(get_current_user_light)
+    current_user: dict = Depends(get_current_user_light),
+    db: AsyncSession = Depends(get_db)
 ):
     """
-    Smart continue learning endpoint - ultra-simplified version
-    Returns session info immediately without database operations
+    Smart continue learning endpoint
+    Starts an adaptive session and returns the first question
     """
     try:
-        # Just create session synchronously to avoid any async issues
-        from db.models import QuizSession
-        import random
+        # Start an adaptive session
+        session_data = await adaptive_quiz_service.start_adaptive_session(db, current_user["id"])
         
-        # Generate a temporary session ID
-        temp_session_id = random.randint(1000, 9999)
+        # Get the first question
+        question_data = await adaptive_quiz_service.get_next_adaptive_question(db, session_data["session_id"])
         
-        # Return immediately without database operations
+        # Return combined response
         return {
-            "session": {
-                "session_id": temp_session_id,
-                "session_type": "adaptive",
-                "user_id": current_user["id"],
-                "temporary": True
-            },
-            "message": "Ready to learn!",
-            "next_action": "call_start_session_endpoint"
+            "status": "success",
+            "session": session_data,
+            "question": question_data if question_data and "error" not in question_data else None,
+            "message": "Ready to continue learning!"
         }
         
     except Exception as e:
         logger.error(f"Error in continue learning: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to prepare session: {str(e)}")
+        # Return a friendly error response instead of raising HTTP exception
+        return {
+            "status": "error",
+            "error": str(e),
+            "message": "Unable to start learning session. Please try again or refresh the page.",
+            "suggestion": "refresh_token"
+        }
 
 
 @router.get("/insights/{user_id}")

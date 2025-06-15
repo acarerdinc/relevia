@@ -126,9 +126,7 @@ async def continue_learning(
         # Create a simple session
         session = QuizSession(
             user_id=current_user.id,
-            session_type="adaptive",
-            created_at=datetime.utcnow(),
-            is_adaptive=True
+            session_type="adaptive"
         )
         db.add(session)
         await db.commit()

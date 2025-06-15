@@ -16,8 +16,10 @@ is_turso = database_url.startswith("libsql") or database_url.startswith("turso")
 is_vercel = os.environ.get("VERCEL", "0") == "1"
 
 if is_postgresql and is_vercel:
-    # Use NullPool for Vercel + PostgreSQL (with PgBouncer)
+    # Use NullPool for Vercel + PostgreSQL (with PgBouncer/Supavisor)
     from sqlalchemy.pool import NullPool
+    from uuid import uuid4
+    
     engine_kwargs = {
         "echo": False,
         "pool_pre_ping": True,
@@ -29,6 +31,8 @@ if is_postgresql and is_vercel:
             "command_timeout": 60,
             "prepared_statement_cache_size": 0,  # Disable prepared statements for pgbouncer
             "statement_cache_size": 0,  # Also try this variant
+            # Generate unique prepared statement names to avoid conflicts
+            "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4()}__",
         }
     }
 else:

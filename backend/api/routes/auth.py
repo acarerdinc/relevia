@@ -99,52 +99,16 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     # OAuth2PasswordRequestForm uses 'username' field, but we'll treat it as email
     logger.info(f"Login attempt for: {form_data.username}")
     
-    try:
-        # Simple direct query to avoid prepared statements on Vercel
-        import os
-        if os.environ.get("VERCEL", "0") == "1":
-            # For Vercel, use a direct connection approach
-            import asyncpg
-            
-            # Get connection string from environment
-            db_url = os.environ.get("DATABASE_URL", "")
-            if not db_url:
-                db_url = os.environ.get("POSTGRES_URL", "")
-            
-            # Create a single connection (not pooled) to avoid prepared statement issues
-            conn = await asyncpg.connect(
-                db_url,
-                statement_cache_size=0,  # Disable statement caching
-                command_timeout=60
-            )
-            
-            try:
-                row = await conn.fetchrow(
-                    "SELECT id, email, username, hashed_password, is_active FROM users WHERE email = $1 LIMIT 1",
-                    form_data.username
-                )
-            finally:
-                await conn.close()
-                
-            if row:
-                user = type('User', (), {
-                    'id': row['id'],
-                    'email': row['email'],
-                    'username': row['username'],
-                    'hashed_password': row['hashed_password'],
-                    'is_active': row['is_active']
-                })()
-            else:
-                user = None
-        else:
-            # Use SQLAlchemy for local development
-            result = await db.execute(
-                select(User).where(User.email == form_data.username)
-            )
-            user = result.scalar_one_or_none()
+    # Use SQLAlchemy with fixed prepared statement handling
+    result = await db.execute(
+        select(User).where(User.email == form_data.username)
+    )
+    user = result.scalar_one_or_none()
             
     except Exception as e:
         logger.error(f"Database error during login for {form_data.username}: {e}")
+        logger.error(f"Error type: {type(e).__name__}")
+        logger.error(f"Error details: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database error occurred"

@@ -99,12 +99,12 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     # OAuth2PasswordRequestForm uses 'username' field, but we'll treat it as email
     logger.info(f"Login attempt for: {form_data.username}")
     
-    # Use SQLAlchemy with fixed prepared statement handling
-    result = await db.execute(
-        select(User).where(User.email == form_data.username)
-    )
-    user = result.scalar_one_or_none()
-            
+    try:
+        # Use SQLAlchemy with fixed prepared statement handling
+        result = await db.execute(
+            select(User).where(User.email == form_data.username)
+        )
+        user = result.scalar_one_or_none()
     except Exception as e:
         logger.error(f"Database error during login for {form_data.username}: {e}")
         logger.error(f"Error type: {type(e).__name__}")

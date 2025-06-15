@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from typing import Union
 from db.database import get_db
+from db.connection_manager import connection_manager, with_retry
 from services.quiz_service import quiz_engine
 
 router = APIRouter()
@@ -18,28 +19,30 @@ class SubmitAnswerRequest(BaseModel):
     action: str = "answer"  # answer, teach_me, skip
 
 @router.post("/start")
-async def start_quiz(request: StartQuizRequest, db: AsyncSession = Depends(get_db)):
-    """Start a new quiz session"""
-    try:
-        session = await quiz_engine.start_quiz_session(
-            db=db,
-            user_id=request.user_id,
-            topic_id=request.topic_id
-        )
-        await db.commit()
-        
-        return {
-            "session_id": session.id,
-            "topic_id": session.topic_id,
-            "message": "Quiz started successfully"
-        }
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+async def start_quiz(request: StartQuizRequest):
+    """Start a new quiz session with retry logic"""
+    async with connection_manager.get_session() as db:
+        try:
+            session = await quiz_engine.start_quiz_session(
+                db=db,
+                user_id=request.user_id,
+                topic_id=request.topic_id
+            )
+            await db.commit()
+            
+            return {
+                "session_id": session.id,
+                "topic_id": session.topic_id,
+                "message": "Quiz started successfully"
+            }
+        except Exception as e:
+            await db.rollback()
+            raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/question/{session_id}")
-async def get_question(session_id: int, db: AsyncSession = Depends(get_db)):
-    """Get next question for the quiz"""
+@with_retry(timeout=10.0)
+async def get_question(session_id: int, db: AsyncSession = None):
+    """Get next question for the quiz with retry logic"""
     try:
         question = await quiz_engine.get_next_question(db=db, session_id=session_id)
         
@@ -51,8 +54,9 @@ async def get_question(session_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/answer")
-async def submit_answer(request: SubmitAnswerRequest, db: AsyncSession = Depends(get_db)):
-    """Submit answer and get feedback"""
+@with_retry(timeout=15.0)
+async def submit_answer(request: SubmitAnswerRequest, db: AsyncSession = None):
+    """Submit answer and get feedback with retry logic"""
     try:
         result = await quiz_engine.submit_answer(
             db=db,
@@ -70,8 +74,9 @@ async def submit_answer(request: SubmitAnswerRequest, db: AsyncSession = Depends
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/session/{session_id}")
-async def get_session_info(session_id: int, db: AsyncSession = Depends(get_db)):
-    """Get quiz session information"""
+@with_retry(timeout=5.0)
+async def get_session_info(session_id: int, db: AsyncSession = None):
+    """Get quiz session information with retry logic"""
     from sqlalchemy import select
     from db.models import QuizSession, Topic
     

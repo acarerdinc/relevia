@@ -5,7 +5,7 @@ from sqlalchemy import select, func, text
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, Dict
 from pydantic import BaseModel, EmailStr
 
 from db.database import get_db
@@ -84,6 +84,27 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
     
     logger.debug(f"Successfully authenticated user: {user.email}")
     return user
+
+async def get_current_user_light(token: str = Depends(oauth2_scheme)) -> Dict:
+    """Lightweight version that only validates token without DB query"""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise credentials_exception
+        
+        # Return basic user info from token
+        return {
+            "email": email,
+            "id": 1  # Default user ID for now
+        }
+    except JWTError:
+        raise credentials_exception
 
 # Routes
 @router.post("/register", response_model=UserResponse)

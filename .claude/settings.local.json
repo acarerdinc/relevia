@@ -45,7 +45,15 @@
       "WebFetch(domain:vercel.com)",
       "Bash(cat:*)",
       "Bash(cp:*)",
-      "Bash(tail:*)"
+      "Bash(tail:*)",
+      "Bash(jq:*)",
+      "Bash(cut:*)",
+      "Bash(head:*)",
+      "Bash(awk:*)",
+      "Bash(export TURSO_DATABASE_URL=\"libsql://relevia-acarerdinc.aws-eu-west-1.turso.io\")",
+      "Bash(export:*)",
+      "Bash(diff:*)",
+      "Bash(git stash:*)"
     ],
     "deny": []
   }

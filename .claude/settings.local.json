@@ -54,7 +54,8 @@
       "Bash(export:*)",
       "Bash(diff:*)",
       "Bash(git stash:*)",
-      "Bash(git merge:*)"
+      "Bash(git merge:*)",
+      "Bash(./test_railway_start.sh:*)"
     ],
     "deny": []
   }

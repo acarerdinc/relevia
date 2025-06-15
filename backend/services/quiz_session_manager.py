@@ -121,7 +121,12 @@ class QuizSessionManager:
         if not session.started_at:
             return True
         
-        elapsed = datetime.now(timezone.utc) - session.started_at
+        # Ensure started_at is timezone-aware
+        started_at = session.started_at
+        if started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=timezone.utc)
+        
+        elapsed = datetime.now(timezone.utc) - started_at
         return elapsed.total_seconds() > (self.session_timeout_minutes * 60)
 
 

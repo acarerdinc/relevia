@@ -41,7 +41,8 @@
       "Bash(psql:*)",
       "Bash(rg:*)",
       "Bash(sed:*)",
-      "Bash(git cherry-pick:*)"
+      "Bash(git cherry-pick:*)",
+      "Bash(# Submit answer to the second question\ncurl -X POST http://localhost:8001/api/v1/adaptive/answer \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"quiz_question_id\": 12,\n    \"answer\": \"Balancing computational complexity with performance requirements\",\n    \"time_spent\": 20,\n    \"action\": \"answer\"\n  }')"
     ],
     "deny": []
   }

@@ -9,6 +9,7 @@ from api.v1 import adaptive_learning
 from core.config import settings
 from core.logging_config import logger, performance_logger
 from db.database import engine, Base
+from core.startup import ensure_database_initialized
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -17,6 +18,10 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("✅ Database tables created/verified")
+    
+    # Ensure database is properly initialized
+    await ensure_database_initialized()
+    
     yield
     # Shutdown
     logger.info("🛑 Shutting down Relevia backend server")

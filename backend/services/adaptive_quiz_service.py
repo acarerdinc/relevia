@@ -50,6 +50,10 @@ class AdaptiveQuizService:
             question_data = question_cache_service.get_prefetched_question(session_id)
             
             if question_data:
+                # Handle fallback questions that need database creation
+                if question_data.get('is_fallback', False) and 'question_id' not in question_data:
+                    question_data = await self._create_fallback_question(db, question_data)
+                
                 # Create quiz question link
                 quiz_question = await quiz_session_manager.create_quiz_question_link(
                     db, session_id, question_data["question_id"]

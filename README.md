@@ -2,6 +2,38 @@
 
 An intelligent learning platform that uses **Multi-Armed Bandit algorithms** and **dynamic ontology expansion** to create personalized, infinite learning experiences. The system adapts to user interests and proficiency levels, automatically generating questions and unlocking specialized topics.
 
+## 🚀 Quick Start
+
+### Prerequisites
+- Python 3.8+
+- Node.js 16+
+
+### Clone and Run
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd relevia
+
+# Backend setup
+cd backend
+pip install -r requirements.txt
+echo "DATABASE_URL=sqlite+aiosqlite:///./relevia.db" > .env
+echo "SECRET_KEY=your-secret-key-here" >> .env
+uvicorn main:app --port 8001 --host 0.0.0.0 --reload
+
+# Frontend setup (new terminal)
+cd ../frontend
+npm install
+npm run dev
+```
+
+Visit http://localhost:3000 and login with:
+- **Email**: user@example.com  
+- **Password**: password123
+
+The database initializes automatically on first run!
+
 ## 🌟 Key Features
 
 ### 🎯 **Adaptive Learning Algorithm**

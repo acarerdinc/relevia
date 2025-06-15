@@ -154,6 +154,8 @@ class DynamicOntologyService:
     ) -> List[Dict]:
         """Check if user has achieved mastery level to dynamically generate and unlock subtopics"""
         print(f"🔍 check_and_unlock_subtopics: Starting for user={user_id}, topic={topic_id}")
+        ontology_logger.info(f"🚀 [UNLOCK] ===== STARTING SUBTOPIC GENERATION CHECK =====")
+        ontology_logger.info(f"🎯 [UNLOCK] Target: user_id={user_id}, topic_id={topic_id}")
         
         # Get user's progress on this topic
         result = await db.execute(
@@ -162,16 +164,29 @@ class DynamicOntologyService:
             )
         )
         progress = result.scalar_one_or_none()
-        ontology_logger.info(f"📈 [UNLOCK] User progress: exists={progress is not None}, mastery={progress.current_mastery_level if progress else 'N/A'}, questions={progress.questions_answered if progress else 0}")
+        
+        if progress:
+            ontology_logger.info(f"📈 [UNLOCK] User progress found:")
+            ontology_logger.info(f"    - mastery_level: {progress.current_mastery_level}")
+            ontology_logger.info(f"    - questions_answered: {progress.questions_answered}")
+            ontology_logger.info(f"    - correct_answers: {progress.correct_answers}")
+            ontology_logger.info(f"    - proficiency_threshold_met: {progress.proficiency_threshold_met}")
+            ontology_logger.info(f"    - is_unlocked: {progress.is_unlocked}")
+        else:
+            ontology_logger.error(f"❌ [UNLOCK] No progress found for user {user_id}, topic {topic_id}")
+            return []
         
         # Check if user has reached minimum mastery level (competent) rather than just question count
-        # This ensures subtopics unlock when mastery is achieved, not arbitrary question counts
         if not progress or (progress.current_mastery_level == "novice" and progress.questions_answered < self.min_questions_for_proficiency):
-            ontology_logger.info(f"⏭️ [UNLOCK] Skipping - insufficient progress (mastery: {progress.current_mastery_level if progress else 'none'}, questions: {progress.questions_answered if progress else 0})")
+            ontology_logger.info(f"⏭️ [UNLOCK] SKIPPING - insufficient progress")
+            ontology_logger.info(f"    - Current mastery: {progress.current_mastery_level if progress else 'none'}")
+            ontology_logger.info(f"    - Questions answered: {progress.questions_answered if progress else 0}")
+            ontology_logger.info(f"    - Required for proficiency: {self.min_questions_for_proficiency}")
             return []
         
         # Use mastery level instead of accuracy
         current_mastery_level = progress.current_mastery_level or "novice"
+        ontology_logger.info(f"🎖️ [UNLOCK] Current mastery level: {current_mastery_level}")
         
         unlocked_topics = []
         
@@ -180,36 +195,60 @@ class DynamicOntologyService:
         existing_children = await db.execute(
             select(Topic).where(Topic.parent_id == topic_id)
         )
-        has_children = len(existing_children.scalars().all()) > 0
+        children_list = existing_children.scalars().all()
+        has_children = len(children_list) > 0
+        
+        ontology_logger.info(f"👶 [UNLOCK] Children check:")
+        ontology_logger.info(f"    - Existing children count: {len(children_list)}")
+        ontology_logger.info(f"    - Has children: {has_children}")
+        if children_list:
+            for child in children_list:
+                ontology_logger.info(f"    - Child: {child.name} (ID: {child.id})")
         
         should_generate_subtopics = (
-            # First time reaching competent level (no children exist yet)
-            (current_mastery_level in ["competent", "proficient", "expert", "master"] and not has_children) or
-            # Progressive generation for higher mastery levels
-            (current_mastery_level in ["proficient", "expert", "master"] and has_children)
+            # Only generate once when first reaching competent level (no children exist yet)
+            current_mastery_level in ["competent", "proficient", "expert", "master"] and not has_children
         )
         
-        ontology_logger.info(f"🎯 [UNLOCK] Generation check - mastery: {current_mastery_level}, has_children: {has_children}, should_generate: {should_generate_subtopics}")
-        ontology_logger.debug(f"[UNLOCK] Condition 1 (first time competent+): {current_mastery_level in ['competent', 'proficient', 'expert', 'master']} AND {not has_children} = {current_mastery_level in ['competent', 'proficient', 'expert', 'master'] and not has_children}")
-        ontology_logger.debug(f"[UNLOCK] Condition 2 (progressive): {current_mastery_level in ['proficient', 'expert', 'master']} AND {has_children} = {current_mastery_level in ['proficient', 'expert', 'master'] and has_children}")
+        ontology_logger.info(f"🤔 [UNLOCK] Generation decision logic:")
+        ontology_logger.info(f"    - Mastery level eligible: {current_mastery_level in ['competent', 'proficient', 'expert', 'master']}")
+        ontology_logger.info(f"    - No children exist: {not has_children}")
+        ontology_logger.info(f"    - Should generate: {should_generate_subtopics}")
+        ontology_logger.info(f"    - proficiency_threshold_met flag: {progress.proficiency_threshold_met}")
+        
+        # Additional check for threshold flag
+        if progress.proficiency_threshold_met:
+            ontology_logger.warning(f"⚠️ [UNLOCK] proficiency_threshold_met is already True - subtopics may have been attempted before")
+        else:
+            ontology_logger.info(f"✅ [UNLOCK] proficiency_threshold_met is False - first time check")
         
         if should_generate_subtopics:
+            ontology_logger.info(f"🚀 [UNLOCK] ===== PROCEEDING WITH SUBTOPIC GENERATION =====")
             progress.proficiency_threshold_met = True
+            ontology_logger.info(f"✅ [UNLOCK] Set proficiency_threshold_met = True")
             
             # Get the current topic for generation context
             topic_result = await db.execute(select(Topic).where(Topic.id == topic_id))
             current_topic = topic_result.scalar_one_or_none()
             
             if not current_topic:
+                ontology_logger.error(f"❌ [UNLOCK] Could not find topic with ID {topic_id}")
                 return []
             
+            ontology_logger.info(f"📋 [UNLOCK] Current topic: {current_topic.name} (ID: {current_topic.id})")
+            ontology_logger.info(f"    - Description: {current_topic.description}")
+            ontology_logger.info(f"    - Difficulty range: {current_topic.difficulty_min}-{current_topic.difficulty_max}")
+            
             # First, try to unlock existing subtopics that match the mastery level
+            ontology_logger.info(f"🔍 [UNLOCK] Checking for existing subtopics to unlock...")
             existing_subtopics = await self._get_existing_subtopics_for_unlocking(
                 db, user_id, topic_id, current_mastery_level
             )
+            ontology_logger.info(f"📊 [UNLOCK] Found {len(existing_subtopics)} existing subtopics to potentially unlock")
             
             # Unlock appropriate existing subtopics
             for subtopic in existing_subtopics:
+                ontology_logger.info(f"🔓 [UNLOCK] Processing existing subtopic: {subtopic.name}")
                 # Check if already unlocked
                 existing_unlock = await db.execute(
                     select(DynamicTopicUnlock).where(
@@ -221,6 +260,7 @@ class DynamicOntologyService:
                 )
                 
                 if not existing_unlock.scalar_one_or_none():
+                    ontology_logger.info(f"🆕 [UNLOCK] Unlocking existing subtopic: {subtopic.name}")
                     # Create unlock record
                     unlock = DynamicTopicUnlock(
                         user_id=user_id,
@@ -245,47 +285,61 @@ class DynamicOntologyService:
                         "description": subtopic.description,
                         "unlock_reason": f"Reached {current_mastery_level} mastery level in parent topic"
                     })
+                else:
+                    ontology_logger.info(f"⏭️ [UNLOCK] Subtopic {subtopic.name} already unlocked")
             
-            # Only generate new topics if no existing topics were unlocked and we have very few children
-            existing_count = len(existing_children.scalars().all())  # Use the already fetched children
+            # Generate new subtopics since we reached competent level and no children exist
+            ontology_logger.info(f"🎯 [UNLOCK] ===== STARTING NEW SUBTOPIC GENERATION =====")
+            ontology_logger.info(f"🎯 [UNLOCK] Generating subtopics for '{current_topic.name}' (first time reaching competent level)")
             
-            # Generate new topics based on different conditions:
-            # 1. First time: no existing children
-            # 2. Progressive: higher mastery levels with reasonable limits (max 12-15 children to avoid overwhelming)
-            max_children_for_progressive = 12  # Reasonable limit for subtopic expansion
-            should_generate_new = (
-                (existing_count == 0 and len(unlocked_topics) == 0) or  # First time generation
-                (progress.current_mastery_level in ["competent", "proficient", "expert"] and 
-                 existing_count < max_children_for_progressive and 
-                 len(unlocked_topics) == 0)  # Progressive generation for higher mastery
-            )
+            # Get user interests for context
+            ontology_logger.info(f"📊 [UNLOCK] Fetching user interests for generation...")
+            user_interests = await self._get_user_interests_for_generation(db, user_id)
+            ontology_logger.info(f"📋 [UNLOCK] Found {len(user_interests)} user interests")
+            for interest in user_interests:
+                ontology_logger.info(f"    - Interest: {interest.get('topic_name')} (score: {interest.get('interest_score')})")
             
-            if should_generate_new:
-                generation_reason = "no existing children" if existing_count == 0 else f"progressive generation at {progress.current_mastery_level} level"
-                ontology_logger.info(f"🎯 [UNLOCK] Generating new subtopics for {current_topic.name} ({generation_reason}, {existing_count} existing)")
-                
-                # Get user interests for context
-                ontology_logger.info(f"📊 [UNLOCK] Fetching user interests for generation...")
-                user_interests = await self._get_user_interests_for_generation(db, user_id)
-                ontology_logger.info(f"📋 [UNLOCK] Found {len(user_interests)} user interests")
-                
-                # Dynamically generate new subtopics (no count restriction - AI will determine optimal number)
-                ontology_logger.info(f"🤖 [UNLOCK] Calling topic generator (AI-determined count)")
+            # Dynamically generate new subtopics
+            ontology_logger.info(f"🤖 [UNLOCK] Calling topic generator with:")
+            ontology_logger.info(f"    - Parent topic: {current_topic.name}")
+            ontology_logger.info(f"    - User interests: {len(user_interests)} items")
+            ontology_logger.info(f"    - Count: None (AI determines)")
+            
+            try:
                 generated_subtopics = await self.topic_generator.generate_subtopics(
                     db, current_topic, user_interests, count=None  # Let AI determine how many are needed
                 )
-                ontology_logger.info(f"📋 [UNLOCK] Generator returned {len(generated_subtopics)} subtopics")
-                
-                # Create the topics in database
-                ontology_logger.info(f"💾 [UNLOCK] Creating topics in database...")
-                created_topics = await self.topic_generator.create_topics_in_database(
-                    db, generated_subtopics, topic_id
-                )
-                ontology_logger.info(f"📋 [UNLOCK] Database creation returned {len(created_topics)} topics")
-                
-                # Unlock the newly created topics
+                ontology_logger.info(f"📋 [UNLOCK] ✅ Generator returned {len(generated_subtopics)} subtopics")
+                for i, subtopic in enumerate(generated_subtopics):
+                    ontology_logger.info(f"    - Subtopic {i+1}: {subtopic.get('name')}")
+            except Exception as e:
+                ontology_logger.error(f"❌ [UNLOCK] Generator failed with error: {str(e)}")
+                ontology_logger.error(f"📚 [UNLOCK] Generator stack trace:", exc_info=True)
+                generated_subtopics = []
+            
+            # Create the topics in database
+            if generated_subtopics:
+                ontology_logger.info(f"💾 [UNLOCK] Creating {len(generated_subtopics)} topics in database...")
+                try:
+                    created_topics = await self.topic_generator.create_topics_in_database(
+                        db, generated_subtopics, topic_id
+                    )
+                    ontology_logger.info(f"📋 [UNLOCK] ✅ Database creation returned {len(created_topics)} topics")
+                    for topic in created_topics:
+                        ontology_logger.info(f"    - Created: {topic.name} (ID: {topic.id})")
+                except Exception as e:
+                    ontology_logger.error(f"❌ [UNLOCK] Database creation failed: {str(e)}")
+                    ontology_logger.error(f"📚 [UNLOCK] Database creation stack trace:", exc_info=True)
+                    created_topics = []
+            else:
+                ontology_logger.warning(f"⚠️ [UNLOCK] No subtopics to create in database")
+                created_topics = []
+            
+            # Unlock the newly created topics
+            if created_topics:
                 ontology_logger.info(f"🔓 [UNLOCK] Unlocking {len(created_topics)} newly created topics...")
-                for i, new_topic in enumerate(created_topics):
+                for new_topic in created_topics:
+                    ontology_logger.info(f"🔓 [UNLOCK] Unlocking new topic: {new_topic.name}")
                     # Create unlock record
                     unlock = DynamicTopicUnlock(
                         user_id=user_id,
@@ -308,10 +362,13 @@ class DynamicOntologyService:
                         "id": new_topic.id,
                         "name": new_topic.name,
                         "description": new_topic.description,
-                        "unlock_reason": f"Generated based on {current_mastery_level} mastery level and interests"
+                        "unlock_reason": f"Generated when reaching {current_mastery_level} mastery level"
                     })
             else:
-                ontology_logger.info(f"🔓 [UNLOCK] Skipping generation for {current_topic.name} - already has {existing_count} children, unlocked {len(unlocked_topics)} existing topics")
+                ontology_logger.warning(f"⚠️ [UNLOCK] No newly created topics to unlock")
+        else:
+            ontology_logger.info(f"⏭️ [UNLOCK] ===== SKIPPING SUBTOPIC GENERATION =====")
+            ontology_logger.info(f"⏭️ [UNLOCK] Reason: should_generate_subtopics = False")
         
         ontology_logger.info(f"💾 [UNLOCK] Committing transaction...")
         await db.commit()

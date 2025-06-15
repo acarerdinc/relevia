@@ -131,27 +131,41 @@ class MasteryProgressService:
         questions_at_current = level_stats["total"]
         correct_answers_at_level = level_stats["correct"]
         
-        print(f"🔍 Mastery tracking: User {user_id}, Topic {topic_id}, Level {current_level.value}, Total: {questions_at_current}, Correct: {correct_answers_at_level}")
+        print(f"🔍 [MASTERY] Tracking: User {user_id}, Topic {topic_id}, Level {current_level.value}, Total: {questions_at_current}, Correct: {correct_answers_at_level}")
         
         overall_accuracy = progress.correct_answers / progress.questions_answered if progress.questions_answered > 0 else 0
         level_accuracy = correct_answers_at_level / questions_at_current if questions_at_current > 0 else 0
         
-        print(f"🎯 Advancement check: {correct_answers_at_level}/{questions_at_current} ({level_accuracy:.1%}) at {current_level.value}, overall accuracy {overall_accuracy:.2%}")
+        print(f"🎯 [MASTERY] Advancement check: {correct_answers_at_level}/{questions_at_current} ({level_accuracy:.1%}) at {current_level.value}, overall accuracy {overall_accuracy:.2%}")
+        print(f"🔍 [MASTERY] can_advance_mastery check: correct_answers={correct_answers_at_level}, current_level={current_level.value}")
+        
+        advancement_possible = can_advance_mastery(correct_answers_at_level, correct_answers_at_level, current_level)
+        print(f"🤔 [MASTERY] can_advance_mastery returned: {advancement_possible}")
         
         advanced = False
         new_level = current_level
         
         # Pass correct_answers_at_level for both parameters since we only care about correct answers now
-        if can_advance_mastery(correct_answers_at_level, correct_answers_at_level, current_level):
+        if advancement_possible:
+            print(f"✅ [MASTERY] Advancement possible! Getting next level...")
             next_level = get_next_mastery_level(current_level)
+            print(f"🔍 [MASTERY] Next level: {next_level.value if next_level else 'None'}")
+            
             if next_level:
+                print(f"🚀 [MASTERY] ADVANCING: {current_level.value} → {next_level.value}")
                 progress.current_mastery_level = next_level.value
                 progress.mastery_level = next_level.value  # Update both fields
                 new_level = next_level
                 advanced = True
                 
                 # Don't count this question towards the new level - start fresh
-                print(f"🎉 LEVEL UP! {current_level.value} → {next_level.value}, starting fresh at {next_level.value}")
+                print(f"🎉 [MASTERY] LEVEL UP CONFIRMED! {current_level.value} → {next_level.value}, starting fresh at {next_level.value}")
+                print(f"📊 [MASTERY] ADVANCED FLAG SET TO: {advanced}")
+            else:
+                print(f"❌ [MASTERY] No next level available from {current_level.value}")
+        else:
+            print(f"❌ [MASTERY] Advancement not possible - staying at {current_level.value}")
+            print(f"📊 [MASTERY] Required for advancement: need more correct answers")
         
         # Update tree navigation capability
         if new_level.value in [TREE_NAVIGATION_THRESHOLD.value, MasteryLevel.PROFICIENT.value, MasteryLevel.EXPERT.value, MasteryLevel.MASTER.value]:
@@ -166,7 +180,7 @@ class MasteryProgressService:
             # Just need the required number of correct answers
             questions_needed = max(0, required_questions - correct_answers_at_level)
         
-        return {
+        result = {
             "advanced": advanced,
             "old_level": current_level.value,
             "new_level": new_level.value,
@@ -177,6 +191,11 @@ class MasteryProgressService:
             "accuracy": overall_accuracy,
             "can_navigate_tree": progress.proficiency_threshold_met
         }
+        
+        print(f"🏁 [MASTERY] Final result: {result}")
+        print(f"🚨 [MASTERY] KEY POINT - ADVANCED FLAG: {advanced}")
+        
+        return result
     
     async def get_recommended_mastery_level(
         self, 

@@ -84,7 +84,160 @@ class DynamicTopicGenerator:
         except Exception as e:
             subtopic_logger.error(f"💥 [GEN:{generation_id}] Failed to generate subtopics: {str(e)}")
             subtopic_logger.error(f"📚 [GEN:{generation_id}] Stack trace:\n{traceback.format_exc()}")
+            
+            # Fallback generation when AI is not available
+            if "Gemini model not initialized" in str(e) or "API key not valid" in str(e) or "API_KEY_INVALID" in str(e):
+                subtopic_logger.error(f"🚨 [GEN:{generation_id}] GEMINI API ISSUE: {str(e)}")
+                print(f"🚨 CRITICAL: Gemini API failed - {str(e)}")
+                print(f"🔧 Please check your GEMINI_API_KEY in .env file")
+                print(f"🌐 Get a valid key from: https://aistudio.google.com/apikey")
+                print(f"⚠️ Using empty fallback (no hardcoded topics)")
+                # Get existing children to inform fallback selection
+                existing_children = await db.execute(select(Topic).where(Topic.parent_id == parent_topic.id))
+                existing_names = {child.name for child in existing_children.scalars().all()}
+                return self._generate_fallback_subtopics(parent_topic, user_interests, count, existing_names)
+            
             return []
+    
+    def _generate_fallback_subtopics(self, parent_topic: Topic, user_interests: List[UserInterest], count: Optional[int] = None, existing_names: set = None) -> List[Dict]:
+        """Generate simple fallback subtopics when AI is unavailable - NO HARDCODING"""
+        
+        if existing_names is None:
+            existing_names = set()
+        
+        # When AI is not available, return empty list instead of hardcoded topics
+        # This forces the system to work with existing topics only
+        subtopic_logger.warning(f"⚠️ AI unavailable - no fallback subtopics generated for {parent_topic.name}")
+        return []
+    
+    def _create_generation_prompt(
+        self, 
+        parent_topic: Topic, 
+        user_interests: List[Dict], 
+        interest_score: float, 
+        count: int = None,
+        current_depth: int = 0
+    ) -> str:
+        """Create a comprehensive prompt for Gemini to generate subtopics using MECE principles"""
+        
+        # Build interest context
+        high_interest_topics = [
+            interest['topic_name'] for interest in user_interests 
+            if interest.get('interest_score', 0) > 0.6
+        ]
+        
+        interest_context = ""
+        if high_interest_topics:
+            interest_context = f"\n\nThe user has shown high interest in: {', '.join(high_interest_topics)}. Consider this when generating subtopics."
+        
+        # Determine difficulty based on interest and current topic depth
+        difficulty_guidance = self._get_difficulty_guidance(parent_topic, interest_score)
+        
+        # Depth-aware guidance to maintain consistent abstraction levels
+        depth_guidance = self._get_depth_guidance(current_depth)
+        
+        # Determine appropriate number of subtopics based on depth
+        if count is None:
+            if current_depth <= 1:
+                count_guidance = "Generate 3-7 major subdivisions that completely cover the topic."
+            elif current_depth <= 3:
+                count_guidance = "Generate 3-6 focused subdivisions."
+            else:
+                count_guidance = "Generate 2-4 specific subdivisions only if absolutely necessary."
+        else:
+            count_guidance = f"Generate exactly {count} subdivisions."
+
+        prompt = f"""You are subdividing a topic into its fundamental knowledge domains. Your goal is to create a COMPLETE and NON-OVERLAPPING breakdown.
+
+Topic: "{parent_topic.name}"
+Description: "{parent_topic.description}"
+Tree Depth: Level {current_depth + 1} (Root = 0)
+
+{depth_guidance}
+
+CRITICAL REQUIREMENTS:
+1. MUTUALLY EXCLUSIVE: Each subtopic covers a distinct area with NO overlap between any subtopics
+2. COLLECTIVELY EXHAUSTIVE: Together, the subtopics must cover EVERYTHING in the parent topic
+3. NO DUPLICATES: Each subtopic name must be unique - no repeating names
+4. NO SUBSETS: No subtopic should be a subset or special case of another sibling
+5. CONSISTENT ABSTRACTION: All subtopics at the same level should have similar levels of specificity
+
+MECE VALIDATION RULES:
+- Before finalizing, check every pair of subtopics for overlap
+- If two subtopics share >50% conceptual overlap, merge them
+- If one subtopic is entirely contained within another, remove or restructure
+- Ensure naming is distinct - avoid using the same key terms across siblings
+
+EXAMPLES OF VIOLATIONS TO AVOID:
+- "Machine Learning" and "Deep Learning" as siblings (Deep Learning ⊂ Machine Learning)
+- "Neural Networks" and "Neural Network Architectures" as siblings (redundant)
+- "Computer Vision" and "Computer Vision Applications" as siblings (one contains the other)
+- Having both generic "Applications" and specific application areas as siblings
+
+{count_guidance}
+
+POST-GENERATION CHECKLIST:
+✓ No two subtopics have names that differ by only one word
+✓ No subtopic name contains another subtopic's name
+✓ Each subtopic addresses a fundamentally different aspect
+✓ Combined coverage = 100% of parent topic
+✓ An expert in one subtopic doesn't necessarily need deep knowledge of others
+
+Return ONLY this JSON:
+[
+  {{
+    "name": "Unique Subdivision Name",
+    "description": "Clear description of what this uniquely covers",
+    "difficulty_min": {max(1, parent_topic.difficulty_min)},
+    "difficulty_max": {min(10, parent_topic.difficulty_max + 1)},
+    "learning_objectives": ["Specific objective 1", "Specific objective 2", "Specific objective 3"]
+  }}
+]"""
+
+        return prompt
+    
+    def _get_depth_guidance(self, depth: int) -> str:
+        """Get generation guidance based on tree depth"""
+        if depth == 0:
+            return """
+DEPTH GUIDANCE (Root Level):
+You are creating the MAJOR BRANCHES of this field. Think of the highest-level divisions that organize 
+all knowledge in this domain. These should be broad conceptual categories that could each be a 
+separate course or textbook.
+"""
+        elif depth == 1:
+            return """
+DEPTH GUIDANCE (Level 1):
+You are subdividing a major branch. Create the primary subdivisions that organize this branch into 
+its main components. Think of chapter-level divisions in a textbook about this specific branch.
+"""
+        elif depth == 2:
+            return """
+DEPTH GUIDANCE (Level 2):
+You are creating focused areas within a subdivision. These should be specific enough to guide learning 
+but broad enough to contain multiple concepts. Think section-level divisions within a chapter.
+"""
+        elif depth == 3:
+            return """
+DEPTH GUIDANCE (Level 3):
+You are approaching maximum specificity. Only create subdivisions if they represent fundamentally 
+different approaches or paradigms. Avoid creating topics that are just examples or applications.
+"""
+        else:
+            return """
+DEPTH GUIDANCE (Deep Level):
+You are at maximum depth. Only subdivide if absolutely critical for organizing genuinely distinct 
+concepts that cannot be learned together. Most topics at this level should NOT be further subdivided.
+"""
+    
+    def _get_difficulty_guidance(self, parent_topic: Topic, interest_score: float) -> str:
+        """Generate difficulty guidance based on topic depth and interest"""
+        if interest_score > 0.7:
+            return "The user shows high interest, so include some advanced/specialized subtopics."
+        elif interest_score < 0.3:
+            return "The user shows low interest, so focus on foundational/practical subtopics."
+        else:
+            return "Balance foundational concepts with some intermediate topics."
     
     async def _get_topic_depth(self, db: AsyncSession, topic: Topic) -> int:
         """Calculate the depth of a topic in the tree"""
@@ -265,6 +418,9 @@ concepts that cannot be learned together. Most topics at this level should NOT b
             json_str = json_str.replace('\u201c', '"').replace('\u201d', '"')  # Unicode quotes
             json_str = json_str.replace('\u2018', "'").replace('\u2019', "'")  # Unicode apostrophes
             json_str = json_str.replace('\u2026', '...')  # Unicode ellipsis
+            # Fix smart quotes that might be causing issues
+            json_str = json_str.replace('"', '"').replace('"', '"')  # Additional smart quotes
+            json_str = json_str.replace(''', "'").replace(''', "'")  # Additional smart apostrophes
             
             subtopics = json.loads(json_str)
             

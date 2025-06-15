@@ -116,7 +116,14 @@ Return ONLY the JSON object, no additional text."""
     
     async def generate_content(self, prompt: str) -> str:
         """Generate content using Gemini model"""
+        gemini_logger = logger.getChild("gemini")
+        gemini_logger.info(f"🤖 [GEMINI] generate_content called")
+        gemini_logger.info(f"🤖 [GEMINI] Model initialized: {self.model is not None}")
+        gemini_logger.info(f"🤖 [GEMINI] Prompt length: {len(prompt)} characters")
+        gemini_logger.info(f"🤖 [GEMINI] Prompt preview: {prompt[:200]}...")
+        
         if not self.model:
+            gemini_logger.error(f"❌ [GEMINI] Model not initialized - raising exception")
             raise Exception("Gemini model not initialized")
         
         try:
@@ -125,11 +132,11 @@ Return ONLY the JSON object, no additional text."""
             
             # Add timing and run sync method in thread pool
             start_time = time.time()
-            gemini_logger = logger.getChild("gemini")
-            gemini_logger.info("Starting Gemini API call")
+            gemini_logger.info(f"🚀 [GEMINI] Starting Gemini API call at {start_time}")
             
             # Run the synchronous call in a thread pool to avoid blocking
             loop = asyncio.get_event_loop()
+            gemini_logger.info(f"🔄 [GEMINI] Executing model.generate_content in thread pool...")
             response = await loop.run_in_executor(
                 None, 
                 self.model.generate_content, 
@@ -137,7 +144,9 @@ Return ONLY the JSON object, no additional text."""
             )
             
             elapsed_ms = (time.time() - start_time) * 1000
-            gemini_logger.info(f"Gemini API completed in {elapsed_ms:.1f}ms")
+            gemini_logger.info(f"✅ [GEMINI] Gemini API completed in {elapsed_ms:.1f}ms")
+            gemini_logger.info(f"📝 [GEMINI] Response length: {len(response.text) if response.text else 0} characters")
+            gemini_logger.info(f"📝 [GEMINI] Response preview: {response.text[:200] if response.text else 'No text'}...")
             
             # Log to performance logger if slow
             if elapsed_ms > 3000:
@@ -152,7 +161,8 @@ Return ONLY the JSON object, no additional text."""
             return response.text.strip()
         except Exception as e:
             error_logger = logger.getChild("errors")
-            error_logger.error(f"Gemini API error: {e}")
+            error_logger.error(f"❌ [GEMINI] Gemini API error: {e}")
+            error_logger.error(f"📚 [GEMINI] Error stack trace:", exc_info=True)
             raise
     
     def _shuffle_options(self, question_data: Dict) -> Dict:

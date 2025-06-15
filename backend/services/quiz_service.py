@@ -382,11 +382,22 @@ class AdaptiveQuizEngine:
             db, session.user_id, question.topic_id, action, time_spent
         )
         
-        # Use shared logic for background subtopic generation
+        # Check for newly unlocked topics when mastery advances
         unlocked_topics = []
-        await shared_quiz_logic.trigger_background_subtopic_generation(
-            session.user_id, question.topic_id, action, is_correct
-        )
+        
+        # If user advanced in mastery, check for unlocked subtopics synchronously
+        if mastery_advancement and mastery_advancement.get("advanced"):
+            from services.dynamic_ontology_service import dynamic_ontology_service
+            print(f"🎯 User advanced from {mastery_advancement['old_level']} to {mastery_advancement['new_level']}, checking for unlocked subtopics...")
+            unlocked_topics = await dynamic_ontology_service.check_and_unlock_subtopics(
+                db, session.user_id, question.topic_id
+            )
+            print(f"✅ Found {len(unlocked_topics)} newly unlocked topics: {[t['name'] for t in unlocked_topics]}")
+        else:
+            # Use background generation for non-advancement cases
+            await shared_quiz_logic.trigger_background_subtopic_generation(
+                session.user_id, question.topic_id, action, is_correct
+            )
         
         await db.commit()
         

@@ -154,13 +154,31 @@ class AdaptiveQuizService:
             db, session.user_id, topic.id, engagement_signal, learning_progress
         )
         
-        # Use shared logic for background subtopic generation (same as focused mode)
+        # Check for newly unlocked topics when mastery advances
         unlocked_topics = []
         new_interests = []
         
-        await shared_quiz_logic.trigger_background_subtopic_generation(
-            session.user_id, topic.id, action, is_correct
-        )
+        # If user advanced in mastery, check for unlocked subtopics synchronously
+        if mastery_advancement and mastery_advancement.get("advanced"):
+            print(f"🎯 [ADAPTIVE] User advanced from {mastery_advancement['old_level']} to {mastery_advancement['new_level']}, checking for unlocked subtopics...")
+            print(f"🎯 [ADAPTIVE] Mastery advancement details: {mastery_advancement}")
+            print(f"🎯 [ADAPTIVE] Calling check_and_unlock_subtopics for user_id={session.user_id}, topic_id={topic.id}")
+            unlocked_topics = await dynamic_ontology_service.check_and_unlock_subtopics(
+                db, session.user_id, topic.id
+            )
+            print(f"🎯 [ADAPTIVE] Unlocked topics result: {unlocked_topics}")
+            print(f"✅ [ADAPTIVE] Found {len(unlocked_topics)} newly unlocked topics: {[t['name'] for t in unlocked_topics]}")
+        else:
+            print(f"🎯 [ADAPTIVE] No mastery advancement detected:")
+            if mastery_advancement:
+                print(f"    - Mastery advancement exists: {mastery_advancement}")
+                print(f"    - Advanced flag: {mastery_advancement.get('advanced')}")
+            else:
+                print(f"    - No mastery advancement data")
+            # Use background generation for non-advancement cases
+            await shared_quiz_logic.trigger_background_subtopic_generation(
+                session.user_id, topic.id, action, is_correct
+            )
         
         if interest_update and interest_update.get("new_interests_discovered"):
             new_interests = interest_update["new_interests_discovered"]

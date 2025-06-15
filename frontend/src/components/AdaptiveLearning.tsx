@@ -582,7 +582,7 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
                   Mastery Journey
                 </span>
                 <span className="text-sm text-gray-600 dark:text-gray-400">
-                  {currentQuestion.mastery_level ? currentQuestion.mastery_level.charAt(0).toUpperCase() + currentQuestion.mastery_level.slice(1) : 'Novice'}
+                  {currentQuestion.topic_progress.proficiency.mastery_level ? currentQuestion.topic_progress.proficiency.mastery_level.charAt(0).toUpperCase() + currentQuestion.topic_progress.proficiency.mastery_level.slice(1) : 'Novice'}
                 </span>
               </div>
               
@@ -594,10 +594,10 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
                     className="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-red-500 transition-all duration-500"
                     style={{ 
                       width: `${
-                        (currentQuestion.mastery_level || 'novice').toLowerCase() === 'novice' ? '10%' :
-                        (currentQuestion.mastery_level || 'novice').toLowerCase() === 'competent' ? '30%' :
-                        (currentQuestion.mastery_level || 'novice').toLowerCase() === 'proficient' ? '50%' :
-                        (currentQuestion.mastery_level || 'novice').toLowerCase() === 'expert' ? '70%' :
+                        (currentQuestion.topic_progress.proficiency.mastery_level || 'novice').toLowerCase() === 'novice' ? '10%' :
+                        (currentQuestion.topic_progress.proficiency.mastery_level || 'novice').toLowerCase() === 'competent' ? '30%' :
+                        (currentQuestion.topic_progress.proficiency.mastery_level || 'novice').toLowerCase() === 'proficient' ? '50%' :
+                        (currentQuestion.topic_progress.proficiency.mastery_level || 'novice').toLowerCase() === 'expert' ? '70%' :
                         '90%'
                       }` 
                     }}
@@ -616,7 +616,7 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
                         'bg-red-500 text-white'
                       } ${
                         // Highlight current level
-                        (currentQuestion.mastery_level || 'novice').toLowerCase() === level.toLowerCase()
+                        (currentQuestion.topic_progress.proficiency.mastery_level || 'novice').toLowerCase() === level.toLowerCase()
                           ? 'ring-4 ring-opacity-30 ring-current scale-110'
                           : ''
                       }`}>
@@ -627,7 +627,7 @@ export function AdaptiveLearning({ onViewChange, startSession, onSessionUsed, on
                          '👑'}
                       </div>
                       <span className={`text-xs mt-1 ${
-                        (currentQuestion.mastery_level || 'novice').toLowerCase() === level.toLowerCase()
+                        (currentQuestion.topic_progress.proficiency.mastery_level || 'novice').toLowerCase() === level.toLowerCase()
                           ? 'font-bold text-gray-900 dark:text-white'
                           : 'text-gray-500 dark:text-gray-400'
                       }`}>

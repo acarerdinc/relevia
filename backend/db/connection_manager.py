@@ -16,12 +16,17 @@ from sqlalchemy.exc import (
     InterfaceError,
     DisconnectionError
 )
-from asyncpg.exceptions import (
-    ConnectionDoesNotExistError,
-    ConnectionResetError,
-    TooManyConnectionsError,
-    PostgresConnectionError
-)
+try:
+    from asyncpg.exceptions import (
+        ConnectionDoesNotExistError,
+        TooManyConnectionsError,
+        PostgresConnectionError
+    )
+except ImportError:
+    # Fallback for different asyncpg versions
+    ConnectionDoesNotExistError = Exception
+    TooManyConnectionsError = Exception
+    PostgresConnectionError = Exception
 
 from core.logging_config import logger
 from db.database import get_db_context, AsyncSessionLocal, is_vercel, is_pooler_url
@@ -55,7 +60,6 @@ class ConnectionManager:
             
             # asyncpg errors
             ConnectionDoesNotExistError,
-            ConnectionResetError,
             TooManyConnectionsError,
             PostgresConnectionError,
             

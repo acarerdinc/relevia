@@ -10,29 +10,30 @@ router = APIRouter()
 async def get_topics(db: AsyncSession = Depends(get_db)):
     """Get all topics in the ontology with hierarchy"""
     
-    async def build_topic_tree(parent_id=None):
-        """Recursively build topic tree"""
-        result = await db.execute(
-            select(Topic).where(Topic.parent_id == parent_id).order_by(Topic.name)
-        )
-        topics = result.scalars().all()
-        
-        topic_list = []
-        for topic in topics:
-            children = await build_topic_tree(topic.id)
-            topic_dict = {
-                "id": topic.id,
-                "name": topic.name,
-                "description": topic.description,
-                "difficulty_min": topic.difficulty_min,
-                "difficulty_max": topic.difficulty_max,
-                "children": children
-            }
-            topic_list.append(topic_dict)
-        
-        return topic_list
+    # Fetch all topics in a single query to avoid multiple round trips
+    result = await db.execute(select(Topic).order_by(Topic.name))
+    all_topics = result.scalars().all()
     
-    topics = await build_topic_tree()
+    # Build a dictionary for quick lookup
+    topics_dict = {topic.id: topic for topic in all_topics}
+    
+    # Build the tree structure in memory
+    def build_tree(parent_id=None):
+        children = []
+        for topic in all_topics:
+            if topic.parent_id == parent_id:
+                topic_dict = {
+                    "id": topic.id,
+                    "name": topic.name,
+                    "description": topic.description,
+                    "difficulty_min": topic.difficulty_min,
+                    "difficulty_max": topic.difficulty_max,
+                    "children": build_tree(topic.id)
+                }
+                children.append(topic_dict)
+        return children
+    
+    topics = build_tree()
     return {"topics": topics}
 
 @router.get("/flat")

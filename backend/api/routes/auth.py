@@ -104,26 +104,32 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
         import os
         if os.environ.get("VERCEL", "0") == "1":
             # Use raw asyncpg for Vercel to avoid prepared statement issues
-            pool = await get_raw_pool()
-            if pool:
-                async with pool.acquire() as conn:
-                    row = await conn.fetchrow(
-                        "SELECT id, email, username, hashed_password, is_active FROM users WHERE email = $1 LIMIT 1",
-                        form_data.username
-                    )
-            else:
-                # Fallback to SQLAlchemy
-                result = await db.execute(
-                    select(User).where(User.email == form_data.username)
-                )
-                user_obj = result.scalar_one_or_none()
+            try:
+                pool = await get_raw_pool()
+                if pool:
+                    logger.info("Using raw asyncpg pool for authentication")
+                    async with pool.acquire() as conn:
+                        row = await conn.fetchrow(
+                            "SELECT id, email, username, hashed_password, is_active FROM users WHERE email = $1 LIMIT 1",
+                            form_data.username
+                        )
+                else:
+                    logger.warning("Raw pool not available, falling back to SQLAlchemy")
+                    raise Exception("Use SQLAlchemy fallback")
+            except Exception as pool_error:
+                logger.error(f"Raw pool error: {pool_error}, using SQLAlchemy fallback")
+                # Fallback to SQLAlchemy with simple query
+                from sqlalchemy import text
+                query = text("SELECT id, email, username, hashed_password, is_active FROM users WHERE email = :email LIMIT 1")
+                result = await db.execute(query, {"email": form_data.username})
+                row_data = result.fetchone()
                 row = {
-                    'id': user_obj.id,
-                    'email': user_obj.email,
-                    'username': user_obj.username,
-                    'hashed_password': user_obj.hashed_password,
-                    'is_active': user_obj.is_active
-                } if user_obj else None
+                    'id': row_data.id,
+                    'email': row_data.email,
+                    'username': row_data.username,
+                    'hashed_password': row_data.hashed_password,
+                    'is_active': row_data.is_active
+                } if row_data else None
         else:
             # Use SQLAlchemy for local development
             result = await db.execute(

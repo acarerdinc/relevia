@@ -70,6 +70,7 @@ async def get_raw_pool():
                 database=database.split('?')[0],
                 min_size=1,
                 max_size=2,
-                command_timeout=60
+                command_timeout=60,
+                statement_cache_size=0  # Disable prepared statements for pgbouncer
             )
     return _raw_pool

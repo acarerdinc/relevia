@@ -29,26 +29,28 @@ async def get_user_progress(user_id: int, db: AsyncSession = Depends(get_db)):
         db.add(user)
         await db.commit()
     
-    # Get all topics first
-    all_topics_result = await db.execute(
-        select(Topic).order_by(Topic.parent_id.nullsfirst(), Topic.name)
+    # Get all topics with user progress in a single query
+    result = await db.execute(
+        select(Topic, UserSkillProgress)
+        .join(
+            UserSkillProgress,
+            and_(
+                Topic.id == UserSkillProgress.topic_id,
+                UserSkillProgress.user_id == user_id
+            ),
+            isouter=True
+        )
+        .order_by(Topic.parent_id.nullsfirst(), Topic.name)
     )
-    all_topics = all_topics_result.scalars().all()
     
-    # Get user's skill progress
-    progress_result = await db.execute(
-        select(UserSkillProgress)
-        .where(UserSkillProgress.user_id == user_id)
-    )
-    progress_dict = {p.topic_id: p for p in progress_result.scalars().all()}
+    all_topics_with_progress = result.all()
     
     topics_data = []
     total_questions = 0
     total_correct = 0
     topics_unlocked = 0
     
-    for topic in all_topics:
-        progress = progress_dict.get(topic.id)
+    for topic, progress in all_topics_with_progress:
         
         # Default values for topics without progress
         is_unlocked = False
@@ -133,24 +135,10 @@ async def get_user_progress(user_id: int, db: AsyncSession = Depends(get_db)):
     if unlocked_topics_count > 0:
         overall_mastery_progress = total_mastery_score / (unlocked_topics_count * 4)  # Normalize to 0-1 scale
     
-    # Get learning streak
-    try:
-        streak_result = await db.execute(
-            select(QuizSession.created_at)
-            .where(QuizSession.user_id == user_id)
-            .order_by(QuizSession.created_at.desc())
-            .limit(30)  # Last 30 sessions
-        )
-        sessions = streak_result.scalars().all()
-        current_streak = calculate_streak(sessions)
-    except:
-        current_streak = 0
-    
-    # Calculate learning velocity (improvement rate)
-    try:
-        learning_velocity = await calculate_learning_velocity(db, user_id)
-    except:
-        learning_velocity = 0.0
+    # Skip expensive streak and velocity calculations for now
+    # These can be loaded asynchronously on the frontend if needed
+    current_streak = 0
+    learning_velocity = 0.0
     
     return {
         "total_topics_unlocked": topics_unlocked,

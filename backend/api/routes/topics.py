@@ -3,12 +3,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from db.database import get_db
 from db.models import Topic
+from functools import lru_cache
+import time
 
 router = APIRouter()
+
+# Cache for topics with 5 minute TTL
+_topics_cache = {"data": None, "timestamp": 0}
+CACHE_TTL = 300  # 5 minutes
 
 @router.get("/")
 async def get_topics(db: AsyncSession = Depends(get_db)):
     """Get all topics in the ontology with hierarchy"""
+    
+    # Check cache first
+    current_time = time.time()
+    if _topics_cache["data"] and (current_time - _topics_cache["timestamp"]) < CACHE_TTL:
+        return _topics_cache["data"]
     
     # Fetch all topics in a single query to avoid multiple round trips
     result = await db.execute(select(Topic).order_by(Topic.name))
@@ -34,7 +45,13 @@ async def get_topics(db: AsyncSession = Depends(get_db)):
         return children
     
     topics = build_tree()
-    return {"topics": topics}
+    response = {"topics": topics}
+    
+    # Update cache
+    _topics_cache["data"] = response
+    _topics_cache["timestamp"] = current_time
+    
+    return response
 
 @router.get("/flat")
 async def get_topics_flat(db: AsyncSession = Depends(get_db)):

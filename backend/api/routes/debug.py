@@ -105,3 +105,55 @@ async def verify_password_test():
         "hash_prefix": new_hash[:20],
         "message": "This hash should be stored in the database for the user"
     }
+
+@router.post("/debug/fix-password")
+async def fix_password(db: AsyncSession = Depends(get_db)):
+    """Update password hash for info@acarerdinc.com"""
+    email = "info@acarerdinc.com"
+    password = "zarzara111"
+    
+    # Generate correct hash
+    correct_hash = pwd_context.hash(password)
+    
+    try:
+        # Update using raw SQL to bypass any ORM issues
+        async with db.bind.connect() as conn:
+            raw_conn = await conn.get_raw_connection()
+            
+            # Update the password hash
+            await raw_conn.driver_connection.execute(
+                "UPDATE users SET hashed_password = $1 WHERE email = $2",
+                correct_hash,
+                email
+            )
+            
+            # Verify the update
+            row = await raw_conn.driver_connection.fetchrow(
+                "SELECT email, hashed_password FROM users WHERE email = $1",
+                email
+            )
+            
+            if row:
+                # Test if the new hash works
+                verify_result = pwd_context.verify(password, row['hashed_password'])
+                
+                return {
+                    "status": "success",
+                    "email": email,
+                    "hash_updated": True,
+                    "new_hash_prefix": row['hashed_password'][:20] + "...",
+                    "verification_test": verify_result,
+                    "message": "Password hash updated successfully. Try logging in now."
+                }
+            else:
+                return {
+                    "status": "error",
+                    "message": f"User {email} not found"
+                }
+                
+    except Exception as e:
+        logger.error(f"Error updating password: {str(e)}")
+        return {
+            "status": "error",
+            "message": str(e)
+        }

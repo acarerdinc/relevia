@@ -49,13 +49,20 @@ AsyncSessionLocal = sessionmaker(
 )
 
 async def get_db():
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-        except Exception as e:
-            await session.rollback()
-            raise
-        finally:
+    session = AsyncSessionLocal()
+    try:
+        yield session
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+    finally:
+        # Don't wait for close to complete on Vercel
+        if is_vercel:
+            import asyncio
+            # Fire and forget - don't wait for close
+            asyncio.create_task(session.close())
+        else:
             await session.close()
 
 # Raw asyncpg connection for login to avoid prepared statement issues

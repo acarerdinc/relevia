@@ -5,6 +5,7 @@ from sqlalchemy import text
 from db.database import get_db
 from core.logging_config import logger
 from passlib.context import CryptContext
+from fastapi import Form
 
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -87,7 +88,7 @@ async def test_database(db: AsyncSession = Depends(get_db)):
         return {"status": "error", "message": str(e)}
 
 @router.post("/debug/verify-password")
-async def verify_password_test(password: str):
+async def verify_password_test(password: str = Form(...)):
     """Test bcrypt password generation - pass password as form data"""
     # Generate a new hash for the provided password
     new_hash = pwd_context.hash(password)
@@ -104,7 +105,7 @@ async def verify_password_test(password: str):
     }
 
 @router.post("/debug/fix-password")
-async def fix_password(email: str, password: str, db: AsyncSession = Depends(get_db)):
+async def fix_password(email: str = Form(...), password: str = Form(...), db: AsyncSession = Depends(get_db)):
     """Update password hash for a user - pass email and password as form data"""
     # Generate correct hash
     correct_hash = pwd_context.hash(password)

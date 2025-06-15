@@ -20,8 +20,9 @@ Base = declarative_base()
 is_postgresql = database_url.startswith("postgresql") or database_url.startswith("postgres")
 is_turso = database_url.startswith("libsql") or database_url.startswith("turso")
 is_vercel = os.environ.get("VERCEL", "0") == "1"
+is_railway = os.environ.get("RAILWAY_ENVIRONMENT") is not None
 
-logger.info(f"Database configuration: postgresql={is_postgresql}, pooler={is_pooler_url}, vercel={is_vercel}")
+logger.info(f"Database configuration: postgresql={is_postgresql}, pooler={is_pooler_url}, vercel={is_vercel}, railway={is_railway}")
 
 if is_postgresql and (is_vercel or is_pooler_url):
     # Optimized configuration for Supabase/Supavisor + Vercel
@@ -46,6 +47,23 @@ if is_postgresql and (is_vercel or is_pooler_url):
         }
     }
     logger.info("Using optimized serverless configuration for Supabase/Supavisor")
+elif is_railway and is_postgresql:
+    # Railway-specific configuration for better performance
+    engine_kwargs = {
+        "echo": False,
+        "pool_pre_ping": True,
+        "pool_size": 5,
+        "max_overflow": 10,
+        "pool_timeout": 30,
+        "connect_args": {
+            "server_settings": {
+                "jit": "off",
+                "application_name": "relevia_railway"
+            },
+            "command_timeout": 10,
+        }
+    }
+    logger.info("Using optimized Railway configuration")
 else:
     # Standard configuration for local development
     engine_kwargs = {

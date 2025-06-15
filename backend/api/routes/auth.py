@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from pydantic import BaseModel, EmailStr
 
-from db.database import get_db
+from db.database import get_db, get_raw_pool
 from db.models import User
 from core.config import settings
 from core.logging_config import logger
@@ -100,30 +100,52 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     logger.info(f"Login attempt for: {form_data.username}")
     
     try:
-        # Use SQLAlchemy with execution options to disable prepared statements
-        from sqlalchemy import text
-        query = text("""
-            SELECT id, email, username, hashed_password, is_active 
-            FROM users 
-            WHERE email = :email
-            LIMIT 1
-        """)
-        
-        # Execute with prepared_statement_cache_size=0 to avoid pgbouncer issues
-        result = await db.execute(
-            query.execution_options(no_cache=True),
-            {"email": form_data.username}
-        )
-        row = result.fetchone()
+        # Check if we should use raw connection (Vercel with PostgreSQL)
+        import os
+        if os.environ.get("VERCEL", "0") == "1":
+            # Use raw asyncpg for Vercel to avoid prepared statement issues
+            pool = await get_raw_pool()
+            if pool:
+                async with pool.acquire() as conn:
+                    row = await conn.fetchrow(
+                        "SELECT id, email, username, hashed_password, is_active FROM users WHERE email = $1 LIMIT 1",
+                        form_data.username
+                    )
+            else:
+                # Fallback to SQLAlchemy
+                result = await db.execute(
+                    select(User).where(User.email == form_data.username)
+                )
+                user_obj = result.scalar_one_or_none()
+                row = {
+                    'id': user_obj.id,
+                    'email': user_obj.email,
+                    'username': user_obj.username,
+                    'hashed_password': user_obj.hashed_password,
+                    'is_active': user_obj.is_active
+                } if user_obj else None
+        else:
+            # Use SQLAlchemy for local development
+            result = await db.execute(
+                select(User).where(User.email == form_data.username)
+            )
+            user_obj = result.scalar_one_or_none()
+            row = {
+                'id': user_obj.id,
+                'email': user_obj.email,
+                'username': user_obj.username,
+                'hashed_password': user_obj.hashed_password,
+                'is_active': user_obj.is_active
+            } if user_obj else None
         
         if row:
             # Manually create user object from row
             user = type('User', (), {
-                'id': row.id,
-                'email': row.email,
-                'username': row.username,
-                'hashed_password': row.hashed_password,
-                'is_active': row.is_active
+                'id': row['id'],
+                'email': row['email'],
+                'username': row['username'],
+                'hashed_password': row['hashed_password'],
+                'is_active': row['is_active']
             })()
         else:
             user = None

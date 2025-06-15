@@ -3,6 +3,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from core.config import settings
 import os
+import asyncpg
 
 # Configure database URL and engine options
 database_url = settings.DATABASE_URL
@@ -49,3 +50,26 @@ async def get_db():
             yield session
         finally:
             await session.close()
+
+# Raw asyncpg connection for login to avoid prepared statement issues
+_raw_pool = None
+
+async def get_raw_pool():
+    global _raw_pool
+    if _raw_pool is None and is_postgresql and is_vercel:
+        # Extract connection details from DATABASE_URL
+        import re
+        match = re.match(r'postgresql://([^:]+):([^@]+)@([^/]+)/(.+)', database_url)
+        if match:
+            user, password, host, database = match.groups()
+            _raw_pool = await asyncpg.create_pool(
+                host=host.split(':')[0],
+                port=int(host.split(':')[1]) if ':' in host else 5432,
+                user=user,
+                password=password,
+                database=database.split('?')[0],
+                min_size=1,
+                max_size=2,
+                command_timeout=60
+            )
+    return _raw_pool

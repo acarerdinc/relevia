@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
@@ -100,33 +100,33 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     logger.info(f"Login attempt for: {form_data.username}")
     
     try:
-        # Access the raw asyncpg connection through SQLAlchemy's connection
-        async with db.bind.connect() as conn:
-            raw_conn = await conn.get_raw_connection()
-            
-            # Execute query directly on asyncpg connection
-            row = await raw_conn.driver_connection.fetchrow(
-                "SELECT id, email, username, hashed_password, is_active FROM users WHERE email = $1 LIMIT 1",
-                form_data.username
-            )
+        # Use SQLAlchemy with execution options to disable prepared statements
+        from sqlalchemy import text
+        query = text("""
+            SELECT id, email, username, hashed_password, is_active 
+            FROM users 
+            WHERE email = :email
+            LIMIT 1
+        """)
+        
+        # Execute with prepared_statement_cache_size=0 to avoid pgbouncer issues
+        result = await db.execute(
+            query.execution_options(no_cache=True),
+            {"email": form_data.username}
+        )
+        row = result.fetchone()
         
         if row:
-            # Debug: log retrieved data
-            logger.info(f"User found: {row['email']}, active: {row['is_active']}")
-            logger.info(f"Hash from DB: {row['hashed_password'][:20]}... (truncated)")
-            logger.info(f"Hash length: {len(row['hashed_password'])}")
-            
             # Manually create user object from row
             user = type('User', (), {
-                'id': row['id'],
-                'email': row['email'],
-                'username': row['username'],
-                'hashed_password': row['hashed_password'],
-                'is_active': row['is_active']
+                'id': row.id,
+                'email': row.email,
+                'username': row.username,
+                'hashed_password': row.hashed_password,
+                'is_active': row.is_active
             })()
         else:
             user = None
-            logger.warning(f"No user found for email: {form_data.username}")
             
     except Exception as e:
         logger.error(f"Database error during login for {form_data.username}: {e}")
@@ -135,23 +135,8 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
             detail="Database error occurred"
         )
     
-    if not user:
-        logger.warning(f"Failed login attempt - user not found: {form_data.username}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    # Debug password verification
-    logger.info(f"Attempting password verification for {user.email}")
-    logger.info(f"Password provided: {form_data.password[:3]}... (truncated)")
-    
-    is_valid = verify_password(form_data.password, user.hashed_password)
-    logger.info(f"Password verification result: {is_valid}")
-    
-    if not is_valid:
-        logger.warning(f"Failed login attempt - invalid password for: {form_data.username}")
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        logger.warning(f"Failed login attempt for: {form_data.username}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
